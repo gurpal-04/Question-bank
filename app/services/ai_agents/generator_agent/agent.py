@@ -1,39 +1,14 @@
 from google.adk.agents.llm_agent import Agent
-from google.adk.schemas import StructuredSchema, Field
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
 
-QuestionSchema = StructuredSchema(
-    name="QuestionSchema",
-    description="Schema for a generated question with its possible answers and the correct one.",
-    fields=[
-        Field(
-            name="question",
-            type="string",
-            description="The main question text."
-        ),
-        Field(
-            name="options",
-            type="list[string]",
-            description="List of multiple-choice options."
-        ),
-        Field(
-            name="correct_answer",
-            type="string",
-            description="The correct answer to the question."
-        ),
-        Field(
-            name="explanation",
-            type="string",
-            description="Short explanation or reasoning behind the correct answer."
-        ),
-        Field(
-            name="difficulty",
-            type="string",
-            description="Difficulty level of the question (easy, medium, hard)."
-        ),
-    ]
-)
+from app.models.questions import QuestionsList
 
-root_agent = Agent(
+# Initialize session service
+session_service = InMemorySessionService()
+
+# Create the agent
+generator_agent = Agent(
     model="gemini-2.5-flash",
     name="assessment_generator_agent",
     description=(
@@ -43,16 +18,27 @@ root_agent = Agent(
     instruction=(
         "You are an expert assessment creator for technical skills. "
         "Given a topic (e.g., React, Python, Data Structures) and a difficulty level "
-        "(Beginner, Intermediate, or Advanced), generate a JSON list of 10–15 high-quality MCQs.\n\n"
-        "Each question must include:\n"
-        "1. `question`: The question text.\n"
-        "2. `options`: A list of 4 possible answers.\n"
-        "3. `correct_answer`: The correct option exactly as it appears in `options`.\n"
-        "4. `explanation`: A concise explanation (1–2 sentences) of why the correct answer is right.\n"
-        "5. `metadata`: Include `topic`, `subtopic` (if identifiable), `difficulty`, and `type='MCQ'`.\n\n"
+        "(Beginner, Intermediate, or Advanced), generate a JSON list of 10–15 high-quality MCQs."
+        "Each question must include:"
+        "1. `question`: The question text."
+        "2. `options`: A list of 4 possible answers."
+        "3. `correct_answer`: The correct option exactly as it appears in `options`."
+        "4. `explanation`: A concise explanation (1–2 sentences) of why the correct answer is right."
+        "5. `metadata`: Include `topic`, `subtopic` (if identifiable), `difficulty`, and `type='MCQ'`."
         "Output must be a valid JSON array of question objects — no extra text, comments, or markdown. "
         "Ensure clarity, accuracy, and relevance to the requested topic and difficulty level. "
         "Vary the question patterns to cover conceptual, practical, and scenario-based styles."
     ),
-     output_schema=QuestionSchema,
+    output_schema=QuestionsList,
+    output_key="generated_questions"
 )
+
+# Create runner for the agent
+generator_runner = Runner(
+    agent=generator_agent,
+    app_name="assessment_app",
+    session_service=session_service
+)
+
+# Keep root_agent for backward compatibility
+root_agent = generator_agent
