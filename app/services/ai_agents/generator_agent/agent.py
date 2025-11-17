@@ -1,7 +1,6 @@
 from google.adk.agents.llm_agent import Agent
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
-
 from app.models.questions import QuestionsList
 
 # Initialize session service
@@ -9,7 +8,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 generator_agent = Agent(
-    model="gemini-2.5-flash",
+    model="gemini-2.0-flash",
     name="assessment_generator_agent",
     description=(
         "An AI agent specialized in generating high-quality multiple-choice questions (MCQs) "
