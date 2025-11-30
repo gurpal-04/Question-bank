@@ -10,6 +10,7 @@ if parent_dir not in sys.path:
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import logging
 
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file if it exists
 load_dotenv()
+
 
 # Handle Google credentials - MUST be set up before importing anything that uses Firestore
 def setup_google_credentials():
@@ -32,44 +34,64 @@ def setup_google_credentials():
     try:
         # First check for JSON file (local development)
         if os.path.exists("api-key.json"):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = "api-key.json"
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "api-key.json"
             logger.info("Using local credentials file: api-key.json")
             return
-            
+
         # If no file, try environment variable (Render or .env file)
-        creds_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+        creds_json = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
         if creds_json:
             # For local development, the JSON might be a string representation
-            if isinstance(creds_json, str) and creds_json.startswith('{'):
+            if isinstance(creds_json, str) and creds_json.startswith("{"):
                 creds_json = json.loads(creds_json)
-            
+
             # Create a temporary file to store credentials
-            creds_path = "/tmp/google-credentials.json" if os.getenv('RENDER') else "temp-credentials.json"
-            with open(creds_path, 'w') as f:
+            creds_path = (
+                "/tmp/google-credentials.json"
+                if os.getenv("RENDER")
+                else "temp-credentials.json"
+            )
+            with open(creds_path, "w") as f:
                 if isinstance(creds_json, dict):
                     json.dump(creds_json, f)
                 else:
                     f.write(creds_json)
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = creds_path
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
             logger.info("Successfully set up Google credentials from environment")
         else:
-            logger.info("No explicit credentials found, using default credentials (gcloud auth or metadata server)")
+            logger.info(
+                "No explicit credentials found, using default credentials (gcloud auth or metadata server)"
+            )
     except Exception as e:
         logger.error(f"Error setting up Google credentials: {e}")
+
 
 # Set up credentials before anything else
 setup_google_credentials()
 
 # Now import modules that use Firestore (after credentials are set)
 from app.core.database import init_db
-from app.api.v1 import assessments
+from app.api.v1 import assessments, results, auth
 
 # Create FastAPI app
 app = FastAPI(
     title="Question Bank API",
     description="API for generating and managing assessments with AI agents",
-    version="1.0.0"
+    version="1.0.0",
 )
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:8080",
+        "http://localhost:3000",
+    ],  # Add your frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
+)
+
 
 # Initialize database on startup
 @app.on_event("startup")
@@ -80,8 +102,12 @@ async def startup_event():
     logger.info("  - Generator Agent: /v1/assessments/generate")
     logger.info("  - Feedback Agent: /v1/assessments/submit")
 
+
 # Include routers
+app.include_router(auth.router, prefix="/v1/auth", tags=["auth"])
 app.include_router(assessments.router, prefix="/v1/assessments", tags=["assessments"])
+app.include_router(results.router, prefix="/v1/results", tags=["results"])
+
 
 @app.get("/")
 async def root():
@@ -91,20 +117,26 @@ async def root():
         "documentation": {
             "swagger_ui": "/docs",
             "redoc": "/redoc",
-            "openapi_json": "/openapi.json"
+            "openapi_json": "/openapi.json",
         },
         "endpoints": {
+            "signup": "POST /v1/auth/signup",
+            "login": "POST /v1/auth/login",
+            "migrate_guest": "POST /v1/auth/migrate-guest",
             "generate_assessment": "POST /v1/assessments/generate",
             "submit_assessment": "POST /v1/assessments/submit",
             "get_results": "GET /v1/assessments/{id}/results",
-            "health": "GET /health"
-        }
+            "get_result": "GET /v1/results/{id}",
+            "health": "GET /health",
+        },
     }
+
 
 @app.get("/health")
 async def health_check():
     logger.info("Health check endpoint called")
     return {"status": "healthy"}
+
 
 # Add request logging middleware
 @app.middleware("http")
@@ -113,6 +145,7 @@ async def log_requests(request, call_next):
     response = await call_next(request)
     logger.info(f"Response status: {response.status_code}")
     return response
+
 
 if __name__ == "__main__":
     # Use the PORT environment variable, defaulting to 8080

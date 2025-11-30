@@ -30,7 +30,14 @@ feedback_agent = Agent(
         "4. Maintains a positive and motivating tone"
         "5. Is concise but comprehensive (2-3 paragraphs)"
         ""
-        "Focus on learning and growth rather than just scores."
+        "Additionally, you must:"
+        "- Analyze the incorrect answers to identify 2-5 specific weak topics or concepts"
+        "- For each weak topic, provide 2-4 high-quality learning resources (blogs, videos, tutorials, documentation)"
+        "- Ensure resources are real, relevant, and from reputable sources (e.g., MDN, freeCodeCamp, YouTube channels, etc.)"
+        "- Include a mix of resource types (videos for visual learners, articles for readers, interactive tutorials)"
+        "- Provide clear descriptions of what each resource covers and why it's helpful"
+        ""
+        "Focus on learning and growth rather than just scores. The resources should directly address the weak topics identified."
     ),
     output_schema=FeedbackResponse,
     output_key="feedback_result"
