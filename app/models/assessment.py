@@ -4,6 +4,20 @@ from datetime import datetime
 from app.models.questions import QuestionResponse
 
 
+class QuestionWithAnswer(BaseModel):
+    """Question with user's answer and correctness status"""
+
+    id: str
+    question: str
+    options: List[str]
+    correct_answer: str
+    explanation: str
+    difficulty: str
+    metadata: Dict[str, Any]
+    user_answer: Optional[str] = None  # User's answer for this question
+    is_correct: bool = False  # Whether the user answered correctly
+
+
 class Assessment(BaseModel):
     """Assessment model for Firestore"""
 
@@ -90,6 +104,8 @@ class ResultResponse(BaseModel):
     resources: List[Dict[str, str]] = []
     correct_questions: List[str]
     incorrect_questions: List[str]
+    user_answers: Dict[str, str] = {}  # Map of question_id to user's answer
+    questions: List[QuestionWithAnswer] = []  # Enriched question data with user answers
     created_at: datetime
 
 
