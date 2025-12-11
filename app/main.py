@@ -71,7 +71,7 @@ setup_google_credentials()
 
 # Now import modules that use Firestore (after credentials are set)
 from app.core.database import init_db
-from app.api.v1 import assessments, results, auth
+from app.api.v1 import assessments, results, auth, resources
 
 # Create FastAPI app
 app = FastAPI(
@@ -107,6 +107,7 @@ async def startup_event():
 app.include_router(auth.router, prefix="/v1/auth", tags=["auth"])
 app.include_router(assessments.router, prefix="/v1/assessments", tags=["assessments"])
 app.include_router(results.router, prefix="/v1/results", tags=["results"])
+app.include_router(resources.router, prefix="/v1/resources", tags=["resources"])
 
 
 @app.get("/")
