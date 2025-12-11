@@ -74,6 +74,113 @@ async def list_resources(
     )
 
 
+# Static routes MUST come before dynamic routes like /{resource_id}
+
+
+@router.post(
+    "/ingest",
+    summary="Ingest unembedded resources into vector database",
+)
+async def ingest_resources(
+    limit: int = Query(50, ge=1, le=100, description="Maximum resources to process"),
+    db: firestore.Client = Depends(get_db),
+):
+    """
+    Trigger ingestion of unembedded resources.
+
+    This will:
+    1. Fetch resources where is_embedded=False
+    2. Generate summaries using Gemini LLM
+    3. Create embeddings using Gemini embedding model
+    4. Store in ChromaDB vector database
+    5. Mark resources as embedded in Firestore
+    """
+    from app.services.ingestion_service import IngestionService
+
+    service = IngestionService(db)
+    return await service.ingest_unembedded_resources(limit=limit)
+
+
+@router.get(
+    "/search/semantic",
+    summary="Semantic search for resources",
+)
+async def search_resources(
+    q: str = Query(..., description="Search query"),
+    n: int = Query(5, ge=1, le=20, description="Number of results"),
+    type: Optional[ResourceType] = Query(None, description="Filter by resource type"),
+    db: firestore.Client = Depends(get_db),
+):
+    """
+    Search for resources using semantic similarity.
+
+    Uses Gemini embeddings to find resources most relevant to the query.
+    Returns resources ranked by similarity score.
+    """
+    from app.services.ingestion_service import IngestionService
+
+    service = IngestionService(db)
+    results = await service.search_resources(
+        query=q, n_results=n, filter_type=type.value if type else None
+    )
+
+    return {"query": q, "results": results, "total": len(results)}
+
+
+@router.get(
+    "/stats",
+    summary="Get vector store statistics",
+)
+async def get_stats(
+    db: firestore.Client = Depends(get_db),
+):
+    """Get statistics about the vector store and ingestion service."""
+    from app.services.ingestion_service import IngestionService
+
+    service = IngestionService(db)
+    return service.get_stats()
+
+
+@router.delete(
+    "/{resource_id}/embedding",
+    summary="Remove resource from vector database only",
+)
+async def remove_embedding(
+    resource_id: str,
+    db: firestore.Client = Depends(get_db),
+):
+    """
+    Remove a resource from ChromaDB and mark as unembedded in Firestore.
+
+    This keeps the resource in Firestore but removes its embedding from ChromaDB.
+    Useful for re-indexing resources - run /ingest after to re-embed.
+    """
+    from app.services.vector_store import get_vector_store
+
+    service = ResourceService(db)
+
+    # Check if resource exists
+    resource = await service.get_resource(resource_id)
+    if not resource:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Resource with ID '{resource_id}' not found",
+        )
+
+    # Delete from vector store
+    vector_store = get_vector_store()
+    vector_store.delete_resource(resource_id)
+
+    # Mark as unembedded in Firestore
+    doc_ref = db.collection("resources").document(resource_id)
+    doc_ref.update({"is_embedded": False})
+
+    return {
+        "message": f"Resource '{resource_id}' removed from vector store and marked as unembedded",
+        "resource_id": resource_id,
+    }
+
+
 @router.get(
     "/{resource_id}",
     response_model=ResourceResponse,
@@ -135,11 +242,10 @@ async def delete_resource(
     db: firestore.Client = Depends(get_db),
 ):
     """
-    Delete a resource.
-
-    Note: This will also need to be removed from ChromaDB.
-    The ingestion service handles this during its next sync.
+    Delete a resource from both Firestore and ChromaDB vector store.
     """
+    from app.services.vector_store import get_vector_store
+
     service = ResourceService(db)
     deleted = await service.delete_resource(resource_id)
 
@@ -148,5 +254,9 @@ async def delete_resource(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Resource with ID '{resource_id}' not found",
         )
+
+    # Also delete from vector store
+    vector_store = get_vector_store()
+    vector_store.delete_resource(resource_id)
 
     return None
