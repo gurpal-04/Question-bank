@@ -13,8 +13,8 @@ from app.models.resource import ResourceResponse
 logger = logging.getLogger(__name__)
 
 # Embedding model configuration
-EMBEDDING_MODEL = "text-embedding-004"
-EMBEDDING_DIMENSION = 768  # Default dimension for text-embedding-004
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIMENSION = 3072  # Default dimension for gemini-embedding-001
 
 # LLM model for summary generation
 SUMMARY_MODEL = "gemini-2.0-flash"
