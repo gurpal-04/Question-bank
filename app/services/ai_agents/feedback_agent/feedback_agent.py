@@ -32,24 +32,18 @@ feedback_agent = Agent(
         ""
         "Additionally, you must:"
         "- Analyze the incorrect answers to identify 2-5 specific weak topics or concepts"
-        "- For each weak topic, provide 2-4 high-quality learning resources (blogs, videos, tutorials, documentation)"
-        "- Ensure resources are real, relevant, and from reputable sources (e.g., MDN, freeCodeCamp, YouTube channels, etc.)"
-        "- Include a mix of resource types (videos for visual learners, articles for readers, interactive tutorials)"
-        "- Provide clear descriptions of what each resource covers and why it's helpful"
+        "- Return these weak topics as a list in the 'weak_topics' field"
         ""
-        "Focus on learning and growth rather than just scores. The resources should directly address the weak topics identified."
+        "Focus on learning and growth rather than just scores."
     ),
     output_schema=FeedbackResponse,
-    output_key="feedback_result"
+    output_key="feedback_result",
 )
 
 # Create runner for the agent
 feedback_runner = Runner(
-    agent=feedback_agent,
-    app_name="assessment_app",
-    session_service=session_service
+    agent=feedback_agent, app_name="assessment_app", session_service=session_service
 )
 
 # Keep root_agent for backward compatibility
 root_agent = feedback_agent
-

@@ -91,3 +91,38 @@ async def get_user_assessments(
 
     service = AssessmentService(db)
     return await service.get_user_assessments(target_user_id)
+
+
+@router.post(
+    "/test-normalizer",
+    summary="Test Topic Normalizer Agent",
+)
+async def test_normalizer(
+    topics: list[str],
+    db: firestore.Client = Depends(get_db),
+):
+    """
+    Test the Topic Normalizer Agent directly.
+    Takes a list of raw topics and returns normalized versions.
+    """
+    from app.services.assessment_service import AssessmentService
+    from app.services.ai_agents.topic_normalizer.agent import (
+        topic_normalizer_runner,
+        topic_normalizer_agent,
+    )
+
+    service = AssessmentService(db)
+    prompt = f"Normalize these topics: {topics}"
+
+    try:
+        response = await service.run_agent(
+            topic_normalizer_runner,
+            topic_normalizer_agent,
+            prompt,
+        )
+        return {"input": topics, "response": response}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error running normalizer agent: {str(e)}",
+        )
