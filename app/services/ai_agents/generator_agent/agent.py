@@ -8,7 +8,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 generator_agent = Agent(
-    model="gemini-2.0-flash",
+    model="gemini-2.5-flash",
     name="assessment_generator_agent",
     description=(
         "An AI agent specialized in generating high-quality multiple-choice questions (MCQs) "
@@ -29,14 +29,12 @@ generator_agent = Agent(
         "Vary the question patterns to cover conceptual, practical, and scenario-based styles."
     ),
     output_schema=QuestionsList,
-    output_key="generated_questions"
+    output_key="generated_questions",
 )
 
 # Create runner for the agent
 generator_runner = Runner(
-    agent=generator_agent,
-    app_name="assessment_app",
-    session_service=session_service
+    agent=generator_agent, app_name="assessment_app", session_service=session_service
 )
 
 # Keep root_agent for backward compatibility

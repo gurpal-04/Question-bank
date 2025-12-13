@@ -231,34 +231,10 @@ class AssessmentService:
             if isinstance(feedback_response, dict):
                 feedback_text = feedback_response.get("feedback", "")
                 weak_topics = feedback_response.get("weak_topics", [])
-                resources_data = feedback_response.get("resources", [])
-                # Convert Resource objects to dicts if needed
-                resources = []
-                for resource in resources_data:
-                    if isinstance(resource, dict):
-                        resources.append(resource)
-                    elif hasattr(resource, "dict"):
-                        resources.append(resource.dict())
-                    else:
-                        # Try to convert to dict
-                        try:
-                            resources.append(
-                                {
-                                    "title": getattr(resource, "title", ""),
-                                    "type": getattr(resource, "type", ""),
-                                    "url": getattr(resource, "url", ""),
-                                    "description": getattr(resource, "description", ""),
-                                }
-                            )
-                        except:
-                            pass
+                # We ignore resources from feedback agent as we'll fetch from RAG
             elif hasattr(feedback_response, "feedback"):
                 feedback_text = feedback_response.feedback
                 weak_topics = getattr(feedback_response, "weak_topics", [])
-                resources_data = getattr(feedback_response, "resources", [])
-                resources = [
-                    r.dict() if hasattr(r, "dict") else r for r in resources_data
-                ]
             elif isinstance(feedback_response, str):
                 # Try to parse as JSON
                 try:
@@ -267,17 +243,84 @@ class AssessmentService:
                     parsed = json.loads(feedback_response)
                     feedback_text = parsed.get("feedback", feedback_response)
                     weak_topics = parsed.get("weak_topics", [])
-                    resources = parsed.get("resources", [])
                 except:
                     feedback_text = feedback_response
                     weak_topics = []
-                    resources = []
             else:
                 feedback_text = str(feedback_response) if feedback_response else ""
                 weak_topics = []
-                resources = []
+
+            # Fetch resources from RAG based on weak topics
+            resources = []
+            if weak_topics:
+                try:
+                    # 1. Normalize topics
+                    from app.services.ai_agents.topic_normalizer.agent import (
+                        topic_normalizer_runner,
+                        topic_normalizer_agent,
+                    )
+
+                    normalization_prompt = f"Normalize these topics: {weak_topics}"
+                    normalization_response = await self.run_agent(
+                        topic_normalizer_runner,
+                        topic_normalizer_agent,
+                        normalization_prompt,
+                    )
+
+                    search_queries = []
+                    if isinstance(normalization_response, dict):
+                        normalized_list = normalization_response.get(
+                            "normalized_topics", []
+                        )
+                        search_queries = [
+                            item.get("normalized")
+                            for item in normalized_list
+                            if item.get("normalized")
+                        ]
+                    elif hasattr(normalization_response, "normalized_topics"):
+                        search_queries = [
+                            item.normalized
+                            for item in normalization_response.normalized_topics
+                        ]
+
+                    # Fallback to raw topics if normalization fails or returns empty
+                    if not search_queries:
+                        search_queries = weak_topics
+
+                    # 2. Search for resources
+                    from app.services.ingestion_service import IngestionService
+
+                    ingestion_service = IngestionService(self.db)
+                    found_resource_ids = set()
+
+                    for query in search_queries:
+                        # Fetch top 2 resources per topic
+                        search_results = await ingestion_service.search_resources(
+                            query=query, n_results=2
+                        )
+
+                        for result in search_results:
+                            res_id = result.get("id")
+                            if res_id and res_id not in found_resource_ids:
+                                found_resource_ids.add(res_id)
+                                metadata = result.get("metadata", {})
+                                resources.append(
+                                    {
+                                        "title": metadata.get("title", ""),
+                                        "type": metadata.get("type", "article"),
+                                        "url": metadata.get("url", ""),
+                                        "description": metadata.get("summary", "")
+                                        or f"Learn more about {query}",
+                                    }
+                                )
+
+                except Exception as e:
+                    logger.error(f"Error fetching RAG resources: {e}")
+                    # Don't fail the whole request, just proceed with empty resources
+
         except Exception as e:
             # If feedback generation fails, provide a basic feedback
+            logger.error(f"Error generating feedback: {e}")
             feedback_text = (
                 f"You scored {score}/{max_score}. Keep practicing to improve!"
             )
@@ -373,4 +416,56 @@ class AssessmentService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error fetching assessments: {str(e)}",
+            )
+
+    async def get_assessment(
+        self, assessment_id: str, user_id: str
+    ) -> GenerateAssessmentResponse:
+        """
+        Get a specific assessment by ID.
+        Verifies that the assessment belongs to the user.
+        """
+        try:
+            doc_ref = self.db.collection("assessments").document(assessment_id)
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Assessment with id {assessment_id} not found",
+                )
+
+            data = doc.to_dict()
+
+            # Verify ownership
+            if data.get("user_id") != user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not have permission to access this assessment",
+                )
+
+            created_at = data.get("created_at", datetime.utcnow())
+            if hasattr(created_at, "to_datetime"):
+                created_at = created_at.to_datetime()
+
+            questions = data.get("questions", [])
+            questions_response = [QuestionResponse(**q) for q in questions]
+
+            return GenerateAssessmentResponse(
+                assessment_id=doc.id,
+                topic=data.get("topic", "Unknown"),
+                level=data.get("level", "Unknown"),
+                questions=questions_response,
+                created_at=created_at,
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error fetching assessment {assessment_id}: {e}", exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error fetching assessment: {str(e)}",
             )

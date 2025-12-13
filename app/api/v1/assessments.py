@@ -93,6 +93,35 @@ async def get_user_assessments(
     return await service.get_user_assessments(target_user_id)
 
 
+@router.get(
+    "/{assessment_id}",
+    response_model=GenerateAssessmentResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def get_assessment(
+    assessment_id: str,
+    db: firestore.Client = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+    user_id: Optional[
+        str
+    ] = None,  # For guest users who might pass user_id as query param
+):
+    """
+    Get a specific assessment by ID.
+    """
+    # Determine user_id: use authenticated user if available, otherwise use query param
+    target_user_id = current_user.id if current_user else user_id
+
+    if not target_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id is required",
+        )
+
+    service = AssessmentService(db)
+    return await service.get_assessment(assessment_id, target_user_id)
+
+
 @router.post(
     "/test-normalizer",
     summary="Test Topic Normalizer Agent",
