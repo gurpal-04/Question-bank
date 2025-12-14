@@ -120,8 +120,9 @@ class VectorStore:
                         "id": resource_id,
                         "metadata": metadata,
                         "distance": distance,
-                        "similarity": 1
-                        - distance,  # Convert distance to similarity score
+                        # Convert L2 distance to Cosine Similarity
+                        # L2^2 = 2(1 - cos_sim) -> cos_sim = 1 - (L2^2 / 2)
+                        "similarity": 1 - ((distance**2) / 2),
                     }
                 )
 

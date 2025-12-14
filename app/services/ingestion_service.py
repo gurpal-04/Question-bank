@@ -20,6 +20,15 @@ EMBEDDING_DIMENSION = 3072  # Default dimension for gemini-embedding-001
 SUMMARY_MODEL = "gemini-2.0-flash"
 
 
+# Guardrail constants
+SIMILARITY_THRESHOLD = 0.65
+ALIAS_MAP = {
+    "js": "javascript",
+    "py": "python",
+    "cpp": "c++",
+}
+
+
 class IngestionService:
     """
     Service for ingesting resources into the vector database.
@@ -39,6 +48,42 @@ class IngestionService:
 
         # Initialize Gemini client
         self.client = genai.Client()
+
+    def _tokenize_topic(self, topic: str) -> List[str]:
+        """
+        Tokenize the normalized topic string.
+        Example: "java multithreading" -> ["java", "multithreading"]
+        """
+        if not topic:
+            return []
+        return [t.strip().lower() for t in topic.split() if t.strip()]
+
+    def _normalize_tags(self, tags: List[str]) -> List[str]:
+        """
+        Normalize resource tags (lowercase, trimmed).
+        """
+        if not tags:
+            return []
+        return [t.strip().lower() for t in tags if t.strip()]
+
+    def _has_topic_overlap(
+        self, topic_tokens: List[str], resource_tags: List[str]
+    ) -> bool:
+        """
+        Check if at least one topic token (or its alias) exists in the resource's tags.
+        """
+        normalized_tags = set(self._normalize_tags(resource_tags))
+
+        for token in topic_tokens:
+            # Check direct match
+            if token in normalized_tags:
+                return True
+
+            # Check alias match
+            if token in ALIAS_MAP and ALIAS_MAP[token] in normalized_tags:
+                return True
+
+        return False
 
     async def generate_summary(self, resource: ResourceResponse) -> str:
         """
@@ -205,7 +250,11 @@ Summary:"""
         self, query: str, n_results: int = 5, filter_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Search for resources similar to the query.
+        Search for resources similar to the query with guardrails.
+
+        Guardrails:
+        1. Similarity Threshold: Discard results below SIMILARITY_THRESHOLD.
+        2. Topic/Tag Overlap: Ensure at least one query token matches resource tags.
 
         Args:
             query: Search query text
@@ -223,14 +272,45 @@ Summary:"""
         )
         query_embedding = list(result.embeddings[0].values)
 
-        # Search vector store
-        results = self.vector_store.search(
+        # Search vector store (fetch more results initially to allow for filtering)
+        # We fetch 2x requested results to increase chance of finding valid ones after filtering
+        initial_results = self.vector_store.search(
             query_embedding=query_embedding,
-            n_results=n_results,
+            n_results=n_results * 2,
             filter_type=filter_type,
         )
 
-        return results
+        if not initial_results:
+            return []
+
+        # Tokenize query for overlap check
+        topic_tokens = self._tokenize_topic(query)
+
+        filtered_results = []
+
+        for res in initial_results:
+            # Guardrail 1: Similarity Threshold
+            similarity = res.get("similarity", 0)
+            if similarity < SIMILARITY_THRESHOLD:
+                logger.debug(
+                    f"Resource {res.get('id')} filtered out: similarity {similarity:.3f} < {SIMILARITY_THRESHOLD}"
+                )
+                continue
+
+            # Guardrail 2: Topic/Tag Overlap Check
+            metadata = res.get("metadata", {})
+            tags = metadata.get("tags", [])
+
+            if not self._has_topic_overlap(topic_tokens, tags):
+                logger.debug(
+                    f"Resource {res.get('id')} filtered out: no topic overlap. Query: {topic_tokens}, Tags: {tags}"
+                )
+                continue
+
+            filtered_results.append(res)
+
+        # Return top n_results from filtered list
+        return filtered_results[:n_results]
 
     def get_stats(self) -> Dict[str, Any]:
         """Get ingestion statistics"""
