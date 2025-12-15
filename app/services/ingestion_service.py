@@ -9,12 +9,9 @@ import os
 from app.services.resource_service import ResourceService
 from app.services.vector_store import VectorStore, get_vector_store
 from app.models.resource import ResourceResponse
+from app.services.embedding_service import get_embedding_service
 
 logger = logging.getLogger(__name__)
-
-# Embedding model configuration
-EMBEDDING_MODEL = "gemini-embedding-001"
-EMBEDDING_DIMENSION = 3072  # Default dimension for gemini-embedding-001
 
 # LLM model for summary generation
 SUMMARY_MODEL = "gemini-2.0-flash"
@@ -36,7 +33,7 @@ class IngestionService:
     Workflow:
     1. Read unembedded resources from Firestore
     2. Generate summary using Gemini LLM (if not already present)
-    3. Create embedding using Gemini embedding model
+    3. Create embedding using local BGE model
     4. Insert into ChromaDB
     5. Mark as embedded in Firestore
     """
@@ -45,8 +42,9 @@ class IngestionService:
         self.db = db
         self.resource_service = ResourceService(db)
         self.vector_store = get_vector_store()
+        self.embedding_service = get_embedding_service()
 
-        # Initialize Gemini client
+        # Initialize Gemini client for summaries only
         self.client = genai.Client()
 
     def _tokenize_topic(self, topic: str) -> List[str]:
@@ -120,26 +118,26 @@ Summary:"""
             # Fallback to basic summary from title and tags
             return f"{resource.title}. Topics covered: {', '.join(resource.tags)}."
 
-    async def generate_embedding(self, text: str) -> List[float]:
+    async def generate_embedding(
+        self, text: str, is_query: bool = False
+    ) -> List[float]:
         """
-        Generate embedding for text using Gemini embedding model.
+        Generate embedding for text using local BGE model.
 
         Args:
             text: Text to embed
+            is_query: True if embedding a search query
 
         Returns:
             Embedding vector as list of floats
         """
         try:
-            result = await asyncio.to_thread(
-                self.client.models.embed_content,
-                model=EMBEDDING_MODEL,
-                contents=text,
+            # Run CPU-bound embedding generation in a thread to avoid blocking event loop
+            embedding = await asyncio.to_thread(
+                self.embedding_service.generate_embedding, text, is_query
             )
-            # The result contains a list of embeddings, get the first one
-            embedding = result.embeddings[0].values
             logger.debug(f"Generated embedding with dimension {len(embedding)}")
-            return list(embedding)
+            return embedding
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
             raise
@@ -172,8 +170,8 @@ Summary:"""
                 f"{resource.title}. {summary}. Topics: {', '.join(resource.tags)}"
             )
 
-            # Step 3: Generate embedding
-            embedding = await self.generate_embedding(embedding_text)
+            # Step 3: Generate embedding (is_query=False for documents)
+            embedding = await self.generate_embedding(embedding_text, is_query=False)
 
             # Step 4: Add to vector store
             metadata = {
@@ -264,13 +262,8 @@ Summary:"""
         Returns:
             List of matching resources with similarity scores
         """
-        # Generate embedding for query
-        result = await asyncio.to_thread(
-            self.client.models.embed_content,
-            model=EMBEDDING_MODEL,
-            contents=query,
-        )
-        query_embedding = list(result.embeddings[0].values)
+        # Generate embedding for query (is_query=True)
+        query_embedding = await self.generate_embedding(query, is_query=True)
 
         # Search vector store (fetch more results initially to allow for filtering)
         # We fetch 2x requested results to increase chance of finding valid ones after filtering
@@ -317,6 +310,6 @@ Summary:"""
         vector_stats = self.vector_store.get_collection_stats()
         return {
             "vector_store": vector_stats,
-            "embedding_model": EMBEDDING_MODEL,
+            "embedding_model": "BAAI/bge-base-en-v1.5",
             "summary_model": SUMMARY_MODEL,
         }
