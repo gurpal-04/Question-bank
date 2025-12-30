@@ -1,0 +1,94 @@
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Literal
+
+
+class InterviewContextInput(BaseModel):
+    """
+    Input schema for InterviewContextAgent.
+    
+    This represents the interview configuration provided at interview start.
+    All fields are required and validated.
+    
+    Note: evaluation_bar is handled separately outside the agent and added to the final output.
+    """
+
+    role: str = Field(
+        ...,
+        description="The job role being interviewed for (e.g., 'Frontend Engineer', 'Backend Engineer')",
+        min_length=1,
+    )
+    experience_range: str = Field(
+        ...,
+        description="The candidate's experience level (e.g., '0-3 years', '3-5 years', '5+ years')",
+        min_length=1,
+    )
+    difficulty: Literal["Easy", "Medium", "Hard"] = Field(
+        ...,
+        description="The difficulty level of the interview",
+    )
+
+
+class InterviewContextOutput(BaseModel):
+    """
+    Output schema for InterviewContextAgent.
+    
+    This represents the stable interview context that will be used by all downstream agents.
+    
+    Note: evaluation_bar is added to the final output separately, outside of this model.
+    """
+
+    role_expectations: str = Field(
+        ...,
+        description=(
+            "A clear description of what the interviewer expects from a candidate at this level. "
+            "Written in interviewer language. Must NOT mention scores, numbers, rubrics, or points. "
+            "Focus on skills, knowledge, and behaviors expected."
+        ),
+        min_length=50,  # Ensure meaningful content
+    )
+    expected_concepts: List[str] = Field(
+        ...,
+        description=(
+            "A list of 6-10 core technical concepts that a strong answer would touch. "
+            "Each item must be a noun or short noun phrase (no verbs, no explanations, no sentences). "
+            "Examples: 'React hooks', 'Database indexing', 'API design patterns'"
+        ),
+        min_length=6,
+        max_length=10,
+    )
+
+    @field_validator("expected_concepts")
+    @classmethod
+    def validate_concepts(cls, v: List[str]) -> List[str]:
+        """
+        Validate that concepts are nouns/noun phrases only.
+        Reject items that look like sentences or contain verbs.
+        """
+        if not v:
+            raise ValueError("expected_concepts cannot be empty")
+        
+        validated_concepts = []
+        for concept in v:
+            concept = concept.strip()
+            if not concept:
+                raise ValueError("expected_concepts cannot contain empty strings")
+            
+            # Basic validation: reject if it looks like a sentence
+            # (contains multiple words with verbs, ends with punctuation that suggests a sentence)
+            if len(concept.split()) > 5:  # Too long, likely a sentence
+                raise ValueError(
+                    f"Concept '{concept}' is too long. Keep concepts to short noun phrases (max 5 words)."
+                )
+            
+            # Reject if it ends with sentence-ending punctuation (except for abbreviations)
+            if concept.endswith((".", "!", "?")) and not any(
+                char.isupper() for char in concept[:-1]
+            ):  # Not an abbreviation
+                raise ValueError(
+                    f"Concept '{concept}' appears to be a sentence. Use noun phrases only."
+                )
+            
+            validated_concepts.append(concept)
+        
+        return validated_concepts
+

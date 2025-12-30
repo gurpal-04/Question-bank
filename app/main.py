@@ -71,7 +71,7 @@ setup_google_credentials()
 
 # Now import modules that use Firestore (after credentials are set)
 from app.core.database import init_db
-from app.api.v1 import assessments, results, auth, resources
+from app.api.v1 import assessments, results, auth, resources, interview_context
 
 # Create FastAPI app
 app = FastAPI(
@@ -101,6 +101,7 @@ async def startup_event():
     logger.info("AI Agents available:")
     logger.info("  - Generator Agent: /v1/assessments/generate")
     logger.info("  - Feedback Agent: /v1/assessments/submit")
+    logger.info("  - Interview Context Agent: /v1/interview-context/generate")
 
 
 # Include routers
@@ -108,6 +109,7 @@ app.include_router(auth.router, prefix="/v1/auth", tags=["auth"])
 app.include_router(assessments.router, prefix="/v1/assessments", tags=["assessments"])
 app.include_router(results.router, prefix="/v1/results", tags=["results"])
 app.include_router(resources.router, prefix="/v1/resources", tags=["resources"])
+app.include_router(interview_context.router, prefix="/v1/interview-context", tags=["interview-context"])
 
 
 @app.get("/")
@@ -128,6 +130,7 @@ async def root():
             "submit_assessment": "POST /v1/assessments/submit",
             "get_results": "GET /v1/assessments/{id}/results",
             "get_result": "GET /v1/results/{id}",
+            "generate_interview_context": "POST /v1/interview-context/generate",
             "health": "GET /health",
         },
     }
