@@ -1,10 +1,7 @@
-from google import genai
-from google.genai import types
 from google.cloud import firestore
 from typing import List, Dict, Any, Optional
 import logging
 import asyncio
-import os
 
 from app.services.resource_service import ResourceService
 from app.services.vector_store import VectorStore, get_vector_store
@@ -44,9 +41,6 @@ class IngestionService:
         self.vector_store = get_vector_store()
         self.embedding_service = get_embedding_service()
 
-        # Initialize Gemini client for summaries only
-        self.client = genai.Client()
-
     def _tokenize_topic(self, topic: str) -> List[str]:
         """
         Tokenize the normalized topic string.
@@ -83,41 +77,6 @@ class IngestionService:
 
         return False
 
-    async def generate_summary(self, resource: ResourceResponse) -> str:
-        """
-        Generate a concise summary of the resource for embedding.
-
-        Args:
-            resource: The resource to summarize
-
-        Returns:
-            Generated summary text
-        """
-        prompt = f"""Generate a concise 2-3 sentence summary of this learning resource that captures its key topics and what someone will learn from it.
-
-Title: {resource.title}
-Type: {resource.type}
-URL: {resource.url}
-Tags: {', '.join(resource.tags)}
-
-Summary:"""
-
-        try:
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=SUMMARY_MODEL,
-                contents=prompt,
-            )
-            summary = response.text.strip()
-            logger.info(
-                f"Generated summary for resource {resource.id}: {summary[:100]}..."
-            )
-            return summary
-        except Exception as e:
-            logger.error(f"Error generating summary for {resource.id}: {e}")
-            # Fallback to basic summary from title and tags
-            return f"{resource.title}. Topics covered: {', '.join(resource.tags)}."
-
     async def generate_embedding(
         self, text: str, is_query: bool = False
     ) -> List[float]:
@@ -153,16 +112,18 @@ Summary:"""
             True if successful, False otherwise
         """
         try:
-            # Step 1: Generate or use existing summary
+            # Step 1: Use existing summary (created at resource creation time)
             summary = resource.summary
+
+            # Fallback for legacy resources without a stored summary
             if not summary:
-                summary = await self.generate_summary(resource)
-
-                # Update resource with generated summary
-                from app.models.resource import UpdateResourceRequest
-
-                await self.resource_service.update_resource(
-                    resource.id, UpdateResourceRequest(summary=summary)
+                logger.warning(
+                    f"Resource {resource.id} has no stored summary; using fallback from title and tags."
+                )
+                summary = (
+                    f"{resource.title}. Topics covered: {', '.join(resource.tags)}."
+                    if resource.tags
+                    else resource.title
                 )
 
             # Step 2: Create text for embedding (combine title, summary, and tags)

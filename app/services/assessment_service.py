@@ -24,6 +24,7 @@ from app.services.ai_agents.feedback_agent.feedback_agent import (
     feedback_runner,
     feedback_agent,
 )
+from app.services.ai_agents.runner_utils import run_agent_with_runner
 
 logger = logging.getLogger(__name__)
 
@@ -35,55 +36,13 @@ class AssessmentService:
     async def run_agent(self, runner, agent, prompt: str):
         """
         Helper function to run an ADK agent using Runner.
-        Creates a unique session for each request and extracts the final response.
+        Delegates to the shared runner_utils helper and wraps errors in HTTPException.
         """
         try:
-            # Generate unique session ID for this request
-            session_id = f"session_{uuid.uuid4().hex[:8]}"
-            user_id = "api_user"
-
-            # Create session before running
-            await runner.session_service.create_session(
-                app_name=runner.app_name, user_id=user_id, session_id=session_id
-            )
-
-            # Create user message using types.Content (ADK format)
-            user_msg = types.Content(role="user", parts=[types.Part(text=prompt)])
-
-            # Run the agent and collect final response
-            final_text = None
-            async for event in runner.run_async(
-                user_id=user_id, session_id=session_id, new_message=user_msg
-            ):
-                if event.is_final_response():
-                    if event.content and event.content.parts:
-                        final_text = event.content.parts[0].text
-
-            if final_text is None:
+            result = await run_agent_with_runner(runner, agent, prompt)
+            if result is None:
                 raise ValueError("No final response received from agent")
-
-            # If agent has output_key, try to get structured output from session state
-            if hasattr(agent, "output_key") and agent.output_key:
-                try:
-                    current_session = await runner.session_service.get_session(
-                        app_name=runner.app_name, user_id=user_id, session_id=session_id
-                    )
-                    if current_session and current_session.state:
-                        stored_output = current_session.state.get(agent.output_key)
-                        if stored_output:
-                            # Try to parse as JSON (output_schema returns JSON string)
-                            try:
-                                import json
-
-                                return json.loads(stored_output)
-                            except:
-                                return stored_output
-                except Exception as e:
-                    logger.warning(f"Could not get stored output from session: {e}")
-
-            # Return the text response (might be JSON string if output_schema is used)
-            return final_text
-
+            return result
         except Exception as e:
             logger.error(f"Error running agent: {e}", exc_info=True)
             raise HTTPException(

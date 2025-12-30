@@ -2,6 +2,7 @@ from google.cloud import firestore
 from typing import List, Optional
 from datetime import datetime
 import logging
+import asyncio
 
 from app.models.resource import (
     ResourceDocument,
@@ -11,12 +12,16 @@ from app.models.resource import (
     ResourceListResponse,
     ResourceType,
 )
+from app.services.ai_agents.summary_agent.agent import (
+    summary_runner,
+    summary_agent,
+)
+from app.services.ai_agents.runner_utils import run_agent_with_runner
 
 logger = logging.getLogger(__name__)
 
 # Firestore collection name
 RESOURCES_COLLECTION = "resources"
-
 
 class ResourceService:
     """Service for managing learning resources in Firestore"""
@@ -24,6 +29,38 @@ class ResourceService:
     def __init__(self, db: firestore.Client):
         self.db = db
         self.collection = db.collection(RESOURCES_COLLECTION)
+
+    async def _generate_summary(
+        self, title: str, type_value: str, url: str, tags: List[str]
+    ) -> str:
+        """
+        Generate a concise summary for a resource using the summary agent.
+        Falls back to a simple heuristic summary on error.
+        """
+       
+        prompt = f"""Title: {title} Type: {type_value} URL: {url} Tags: {', '.join(tags)}"""
+
+        try:
+            response = await run_agent_with_runner(
+                summary_runner,
+                summary_agent,
+                prompt,
+            )
+
+            if isinstance(response, str) and response.strip():
+                return response.strip()
+
+            logger.warning(
+                "Summary agent returned empty or non-string response; using fallback."
+            )
+
+        except Exception as e:
+            logger.error(f"Error generating summary via summary agent: {e}")
+
+        # Fallback to basic summary from title and tags
+        return (
+            f"{title}. Topics covered: {', '.join(tags)}." if tags else title
+        )
 
     def _doc_to_response(self, doc_id: str, data: dict) -> ResourceResponse:
         """Convert Firestore document to ResourceResponse"""
@@ -49,15 +86,32 @@ class ResourceService:
         )
 
     async def create_resource(self, request: CreateResourceRequest) -> ResourceResponse:
-        """Create a new resource in Firestore"""
+        """Create a new resource in Firestore.
+
+        If no summary is provided, generate one using the LLM at creation time.
+        """
         now = datetime.utcnow()
+
+        summary = request.summary
+
+        # Generate summary on creation if not provided
+        if not summary or summary == "":
+            summary = await self._generate_summary(
+                title=request.title,
+                type_value=request.type.value,
+                url=request.url,
+                tags=request.tags,
+            )
+            logger.info(
+                f"Generated summary for new resource '{request.title}': {summary[:100]}..."
+            )
 
         resource_data = {
             "url": request.url,
             "title": request.title,
             "type": request.type.value,
             "tags": request.tags,
-            "summary": request.summary,
+            "summary": summary,
             "is_embedded": False,
             "created_at": now,
             "updated_at": now,
@@ -138,29 +192,82 @@ class ResourceService:
     async def update_resource(
         self, resource_id: str, request: UpdateResourceRequest
     ) -> Optional[ResourceResponse]:
-        """Update a resource (partial update)"""
+        """Update a resource (partial update).
+
+        If core content fields change and no summary is provided, generate a new summary.
+        """
         doc_ref = self.collection.document(resource_id)
         doc = doc_ref.get()
 
         if not doc.exists:
             return None
 
-        # Build update dict with only provided fields
+        current_data = doc.to_dict() or {}
+
+        # Compute final values after patch (using existing values as defaults)
+        final_url = request.url if request.url is not None else current_data.get("url", "")
+        final_title = (
+            request.title if request.title is not None else current_data.get("title", "")
+        )
+        final_type = (
+            request.type.value
+            if request.type is not None
+            else current_data.get("type", ResourceType.ARTICLE.value)
+        )
+        final_tags = (
+            request.tags if request.tags is not None else current_data.get("tags", [])
+        )
+
+        # Start from explicit summary in request, if any
+        summary = request.summary
+
+        # Detect if client explicitly asked to clear/regenerate summary
+        empty_summary_requested = (
+            isinstance(request.summary, str) and request.summary.strip() == ""
+        )
+
+        # If core fields changed and summary not explicitly provided, regenerate it
+        core_fields_changed = any(
+            [
+                request.url is not None,
+                request.title is not None,
+                request.type is not None,
+                request.tags is not None,
+            ]
+        )
+
+        need_regenerate = (core_fields_changed and summary is None) or empty_summary_requested
+
+        if need_regenerate:
+            summary = await self._generate_summary(
+                title=final_title,
+                type_value=final_type,
+                url=final_url,
+                tags=final_tags,
+            )
+            logger.info(
+                f"Regenerated summary for updated resource '{resource_id}': {summary[:100]}..."
+            )
+
+        # Build update dict with only provided / recomputed fields
         update_data = {"updated_at": datetime.utcnow()}
 
         if request.url is not None:
-            update_data["url"] = request.url
+            update_data["url"] = final_url
         if request.title is not None:
-            update_data["title"] = request.title
+            update_data["title"] = final_title
         if request.type is not None:
-            update_data["type"] = request.type.value
+            update_data["type"] = final_type
         if request.tags is not None:
-            update_data["tags"] = request.tags
-        if request.summary is not None:
-            update_data["summary"] = request.summary
+            update_data["tags"] = final_tags
+        if summary is not None:
+            update_data["summary"] = summary
 
-        # If content changed (url, title, or summary), reset is_embedded flag
-        if any(key in update_data for key in ["url", "title", "summary"]):
+        # If content changed (url, title, type, tags, or summary), reset is_embedded flag
+        if any(
+            key in update_data
+            for key in ["url", "title", "type", "tags", "summary"]
+        ):
             update_data["is_embedded"] = False
 
         doc_ref.update(update_data)
