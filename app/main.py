@@ -71,7 +71,7 @@ setup_google_credentials()
 
 # Now import modules that use Firestore (after credentials are set)
 from app.core.database import init_db
-from app.api.v1 import assessments, results, auth, resources, interview_context
+from app.api.v1 import assessments, results, auth, resources, interview_context, interview
 
 # Create FastAPI app
 app = FastAPI(
@@ -102,6 +102,7 @@ async def startup_event():
     logger.info("  - Generator Agent: /v1/assessments/generate")
     logger.info("  - Feedback Agent: /v1/assessments/submit")
     logger.info("  - Interview Context Agent: /v1/interview-context/generate")
+    logger.info("  - First Question Generator: /v1/interview/generate-first-question")
 
 
 # Include routers
@@ -110,6 +111,7 @@ app.include_router(assessments.router, prefix="/v1/assessments", tags=["assessme
 app.include_router(results.router, prefix="/v1/results", tags=["results"])
 app.include_router(resources.router, prefix="/v1/resources", tags=["resources"])
 app.include_router(interview_context.router, prefix="/v1/interview-context", tags=["interview-context"])
+app.include_router(interview.router, prefix="/v1/interview", tags=["interview"])
 
 
 @app.get("/")
@@ -131,6 +133,7 @@ async def root():
             "get_results": "GET /v1/assessments/{id}/results",
             "get_result": "GET /v1/results/{id}",
             "generate_interview_context": "POST /v1/interview-context/generate",
+            "generate_first_question": "POST /v1/interview/generate-first-question",
             "health": "GET /health",
         },
     }

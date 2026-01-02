@@ -1,11 +1,9 @@
+from app.services.ai_agents.Interview.interview_context_agent.agent import generate_interview_context
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from typing import List, Literal
 
-from app.services.ai_agents.interview_context_agent import generate_interview_context
-
 router = APIRouter()
-
 
 class GenerateInterviewContextRequest(BaseModel):
     """
