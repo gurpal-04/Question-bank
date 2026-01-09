@@ -39,6 +39,15 @@ class GapAnalysisRequest(BaseModel):
     )
 
 
+class SubmitAnswerRequest(BaseModel):
+    question_id: str = Field(..., description="The ID of the question to answer")
+    answer: str = Field(..., description="The candidate's answer")
+
+
+class GenerateFollowupQuestionRequest(BaseModel):
+    session_id: str = Field(..., description="The interview session ID")
+
+
 class SelectedSkillResponse(BaseModel):
     id: str
     label: str

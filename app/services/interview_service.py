@@ -245,3 +245,104 @@ class InterviewService:
         except Exception as e:
             logger.error(f"Error in submit_answer: {e}", exc_info=True)
             raise
+
+    async def generate_and_store_followup_question(
+        self, session_id: str
+    ) -> InterviewSession:
+        """
+        Generate a followup question based on the last answered question and its gap analysis.
+        Appends the followup question to the session's questions array.
+        """
+        try:
+            # 1. Retrieve session
+            session = self.get_session_by_id(session_id)
+            if not session:
+                raise ValueError(f"Interview session {session_id} not found")
+
+            if not session.questions:
+                raise ValueError("Session contains no questions")
+
+            # 2. Find the last answered question
+            last_answered_question = None
+            for q in reversed(session.questions):
+                if q.answer and q.gap_analysis:
+                    last_answered_question = q
+                    break
+
+            if not last_answered_question:
+                raise ValueError(
+                    "No answered question with gap analysis found in session"
+                )
+
+            # 3. Prepare input for followup question generator
+            from app.services.ai_agents.Interview.followup_question_generator.agent import (
+                followup_question_generator_runner,
+                followup_question_generator_agent,
+            )
+
+            primary_skill = session.calibration.selected_skill.get("label", "")
+            if not primary_skill:
+                raise ValueError("Primary skill not found in session calibration")
+
+            prompt_data = {
+                "interview_context": session.interview_context,
+                "primary_skill": primary_skill,
+                "previous_question": last_answered_question.question,
+                "candidate_answer": last_answered_question.answer,
+                "evaluation_signals": last_answered_question.gap_analysis,
+                "followup_intent": last_answered_question.gap_analysis.get(
+                    "followup_intent", "probe_depth"
+                ),
+            }
+
+            prompt = json.dumps(prompt_data, indent=2)
+
+            # 4. Generate followup question
+            result = await run_agent_with_runner(
+                runner=followup_question_generator_runner,
+                agent=followup_question_generator_agent,
+                prompt=prompt,
+            )
+
+            # Parse result
+            if isinstance(result, dict):
+                followup_data = result
+            else:
+                try:
+                    followup_data = (
+                        json.loads(result) if isinstance(result, str) else result
+                    )
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.error(f"Failed to parse followup agent output: {e}")
+                    raise ValueError(f"Agent returned invalid output format: {result}")
+
+            # 5. Create new InterviewQuestion
+            next_sequence = len(session.questions) + 1
+            followup_question = InterviewQuestion(
+                sequence=next_sequence,
+                question_type="follow_up",
+                intent=followup_data.get("intent"),
+                question=followup_data.get("question"),
+                archetype=None,  # Followup questions don't have archetypes
+            )
+
+            # 6. Update session in Firestore
+            doc_ref = self.db.collection("interview_sessions").document(session_id)
+            updated_questions = [q.model_dump() for q in session.questions]
+            updated_questions.append(followup_question.model_dump())
+
+            update_data = {
+                "questions": updated_questions,
+                "updated_at": datetime.utcnow(),
+            }
+            doc_ref.update(update_data)
+
+            # 7. Return updated session
+            updated_session = self.get_session_by_id(session_id)
+            return updated_session
+
+        except Exception as e:
+            logger.error(
+                f"Error in generate_and_store_followup_question: {e}", exc_info=True
+            )
+            raise

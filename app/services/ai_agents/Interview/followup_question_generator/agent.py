@@ -64,57 +64,8 @@ followup_question_generator_runner = Runner(
 )
 
 
-async def generate_followup_question(
-    interview_context: Dict[str, Any],
-    primary_skill: str,
-    previous_question: str,
-    candidate_answer: str,
-    evaluation_signals: Dict[str, Any],
-    followup_intent: str,
-) -> Dict[str, Any]:
-    """
-    Generate a follow-up question.
-    """
-    # Validate input
-    input_data = FollowUpQuestionInput(
-        interview_context=interview_context,
-        primary_skill=primary_skill,
-        previous_question=previous_question,
-        candidate_answer=candidate_answer,
-        evaluation_signals=evaluation_signals,
-        followup_intent=followup_intent,
-    )
-
-    # Construct prompt
-    prompt = json.dumps(input_data.model_dump(), indent=2)
-
-    try:
-        result = await run_agent_with_runner(
-            runner=followup_question_generator_runner,
-            agent=followup_question_generator_agent,
-            prompt=prompt,
-        )
-
-        if isinstance(result, dict):
-            output = FollowUpQuestionOutput(**result)
-        else:
-            try:
-                parsed = json.loads(result) if isinstance(result, str) else result
-                output = FollowUpQuestionOutput(**parsed)
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.error(f"Failed to parse agent output: {e}")
-                raise ValueError(f"Agent returned invalid output format: {result}")
-
-        return output.model_dump()
-
-    except Exception as e:
-        logger.error(f"Error generating follow-up question: {e}", exc_info=True)
-        raise
-
-
 # Export for easy imports
 __all__ = [
     "followup_question_generator_agent",
     "followup_question_generator_runner",
-    "generate_followup_question",
 ]

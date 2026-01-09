@@ -10,8 +10,9 @@ from app.models.interview import (
     InterviewSession,
     InterviewSessionListResponse,
     GapAnalysisRequest,
+    SubmitAnswerRequest,
+    GenerateFollowupQuestionRequest,
 )
-from pydantic import BaseModel, Field
 from app.models.gap_analysis import GapAnalysisOutput
 from app.services.interview_service import InterviewService
 
@@ -128,11 +129,6 @@ async def analyze_answer_gaps(
         )
 
 
-class SubmitAnswerRequest(BaseModel):
-    question_id: str = Field(..., description="The ID of the question to answer")
-    answer: str = Field(..., description="The candidate's answer")
-
-
 @router.post(
     "/{session_id}/submit",
     response_model=GapAnalysisOutput,
@@ -161,3 +157,32 @@ async def submit_answer(
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error submitting answer: {e}")
+
+
+@router.post(
+    "/{session_id}/generate-followup",
+    response_model=InterviewSession,
+    status_code=status.HTTP_200_OK,
+    summary="Generate Followup Question",
+)
+async def generate_followup_question(
+    session_id: str,
+    db: firestore.Client = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Generate a followup question based on the last answer and gap analysis.
+    The followup question is appended to the session's questions array.
+    """
+    service = InterviewService(db)
+    try:
+        session = await service.generate_and_store_followup_question(
+            session_id=session_id
+        )
+        return session
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Error generating followup question: {e}"
+        )
