@@ -7,7 +7,7 @@ from app.models.interview import InterviewSession, CalibrationData, InterviewQue
 from app.services.ai_agents.Interview.interview_context_agent.agent import (
     generate_interview_context,
 )
-from app.services.first_question_service import generate_first_question
+from app.services.primary_question_service import generate_primary_question
 from app.utils.skill_selection import select_primary_skill
 from app.utils.archetype_selector import select_question_archetype
 from app.utils.experience_mapper import (
@@ -30,7 +30,7 @@ class InterviewService:
     def __init__(self, db: firestore.Client):
         self.db = db
 
-    async def generate_and_store_first_question(
+    async def generate_and_store_primary_question(
         self,
         *,
         user_id: str,
@@ -41,7 +41,7 @@ class InterviewService:
         seed: Optional[str] = None,
     ) -> InterviewSession:
         """
-        Orchestrate, persist, and return an interview session for the first question.
+        Orchestrate, persist, and return an interview session for the primary question.
         """
         try:
             # 1. Generate or use provided context
@@ -69,7 +69,7 @@ class InterviewService:
                 seed=seed,
             )
             # 4. Generate question
-            first_question_data = await generate_first_question(
+            primary_question_data = await generate_primary_question(
                 interview_context=interview_context,
                 selected_skill=selected_skill.label,
                 question_archetype=selected_archetype.label,
@@ -91,12 +91,12 @@ class InterviewService:
                 },
             )
 
-            # Construct First InterviewQuestion
-            first_question = InterviewQuestion(
+            # Construct Primary InterviewQuestion
+            primary_question = InterviewQuestion(
                 sequence=1,
                 question_type="primary",
-                question=first_question_data["question"],
-                archetype=first_question_data["archetype"],
+                question=primary_question_data["question"],
+                archetype=primary_question_data["archetype"],
                 # skill_id is removed from InterviewQuestion model as per user request
             )
 
@@ -108,7 +108,7 @@ class InterviewService:
                 "difficulty": difficulty,
                 "interview_context": interview_context,
                 "calibration": calibration.model_dump(),
-                "questions": [first_question.model_dump()],
+                "questions": [primary_question.model_dump()],
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
             }
@@ -119,7 +119,7 @@ class InterviewService:
             return InterviewSession(**session_data)
         except Exception as e:
             logger.error(
-                f"Error in generate_and_store_first_question: {e}", exc_info=True
+                f"Error in generate_and_store_primary_question: {e}", exc_info=True
             )
             raise
 

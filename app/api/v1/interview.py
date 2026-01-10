@@ -5,8 +5,8 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.security import get_optional_user, User
 from app.models.interview import (
-    GenerateFirstQuestionRequest,
-    GenerateFirstQuestionResponse,
+    GeneratePrimaryQuestionRequest,
+    GeneratePrimaryQuestionResponse,
     InterviewSession,
     InterviewSessionListResponse,
     GapAnalysisRequest,
@@ -20,18 +20,18 @@ router = APIRouter()
 
 
 @router.post(
-    "/generate-first-question",
+    "/generate-primary-question",
     response_model=InterviewSession,
     status_code=status.HTTP_201_CREATED,
-    summary="Generate & Store First Interview Question",
+    summary="Generate & Store Primary Interview Question",
 )
-async def generate_first_question(
-    request: GenerateFirstQuestionRequest,
+async def generate_primary_question(
+    request: GeneratePrimaryQuestionRequest,
     db: firestore.Client = Depends(get_db),
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    Generate the first interview question, persist it as an InterviewSession for the user, return the saved session object.
+    Generate the primary interview question, persist it as an InterviewSession for the user, return the saved session object.
     """
     # User must be authenticated (no guest user support for now)
     if not current_user:
@@ -41,7 +41,7 @@ async def generate_first_question(
     user_id = current_user.id
     service = InterviewService(db)
     try:
-        session = await service.generate_and_store_first_question(
+        session = await service.generate_and_store_primary_question(
             user_id=user_id,
             role=request.role,
             experience_range=request.experience_range,

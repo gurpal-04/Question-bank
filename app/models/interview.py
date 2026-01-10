@@ -4,10 +4,10 @@ from typing import List, Literal, Optional, Dict, Any
 from datetime import datetime
 import uuid
 
-# === Request/Response Models for Interview First Question ===
+# === Request/Response Models for Interview Primary Question ===
 
 
-class GenerateFirstQuestionRequest(BaseModel):
+class GeneratePrimaryQuestionRequest(BaseModel):
     role: str = Field(
         ...,
         description="The job role being interviewed for (e.g., 'Frontend Engineer', 'Backend Engineer')",
@@ -61,24 +61,24 @@ class SelectedArchetypeResponse(BaseModel):
     description: str
 
 
-class FirstQuestionResponse(BaseModel):
+class PrimaryQuestionResponse(BaseModel):
     question: str
     archetype: str
     skill_id: str
 
 
-class GenerateFirstQuestionResponse(BaseModel):
+class GeneratePrimaryQuestionResponse(BaseModel):
     interview_context: Dict[str, Any] = Field(
         ..., description="The interview context used for question generation"
     )
     selected_skill: SelectedSkillResponse = Field(
-        ..., description="The skill that was selected for the first question"
+        ..., description="The skill that was selected for the primary question"
     )
     selected_archetype: SelectedArchetypeResponse = Field(
         ..., description="The question archetype that was selected"
     )
-    first_question: FirstQuestionResponse = Field(
-        ..., description="The generated first interview question"
+    primary_question: PrimaryQuestionResponse = Field(
+        ..., description="The generated primary interview question"
     )
 
 
