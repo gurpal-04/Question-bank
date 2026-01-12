@@ -12,6 +12,11 @@ from app.models.interview import (
     GapAnalysisRequest,
     SubmitAnswerRequest,
     GenerateFollowupQuestionRequest,
+    # New orchestrator API models
+    StartInterviewRequest,
+    StartInterviewResponse,
+    AnswerRequest,
+    AnswerResponse,
 )
 from app.models.gap_analysis import GapAnalysisOutput
 from app.services.interview_service import InterviewService
@@ -19,11 +24,115 @@ from app.services.interview_service import InterviewService
 router = APIRouter()
 
 
+# =============================================================================
+# NEW ORCHESTRATOR API ENDPOINTS
+# =============================================================================
+
+
+@router.post(
+    "/start",
+    response_model=StartInterviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Start Interview",
+    description="Initialize a new interview session and get the first question. "
+                "The backend controls all flow decisions.",
+)
+async def start_interview(
+    request: StartInterviewRequest,
+    db: firestore.Client = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Start a new interview session.
+
+    - Initializes interview state
+    - Selects the first skill (highest importance, interview-safe)
+    - Generates the first primary question
+    - Returns the interview ID, first question, and current state
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    service = InterviewService(db)
+    try:
+        response = await service.start_interview(
+            user_id=current_user.id,
+            role=request.role,
+            experience_range=request.experience_range,
+            difficulty=request.difficulty,
+        )
+        return response
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error starting interview: {e}",
+        )
+
+
+@router.post(
+    "/answer",
+    response_model=AnswerResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit Answer",
+    description="Submit an answer to the current question. "
+                "The backend automatically decides what happens next.",
+)
+async def submit_answer_orchestrated(
+    request: AnswerRequest,
+    db: firestore.Client = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Submit an answer and get the orchestrated next action.
+
+    Flow:
+    1. Evaluates the answer using gap analysis
+    2. Updates interview state
+    3. Determines next action (follow-up, new skill, or end)
+    4. Generates the next question if applicable
+    5. Returns decision, reason, next question, and updated state
+
+    The frontend NEVER chooses which agent to call - the backend decides.
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    service = InterviewService(db)
+    try:
+        response = await service.process_answer(
+            interview_id=request.interview_id,
+            answer_text=request.answer_text,
+        )
+        return response
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing answer: {e}",
+        )
+
+
+# =============================================================================
+# LEGACY ENDPOINTS (DEPRECATED)
+# =============================================================================
+
+
 @router.post(
     "/generate-primary-question",
     response_model=InterviewSession,
     status_code=status.HTTP_201_CREATED,
-    summary="Generate & Store Primary Interview Question",
+    summary="[DEPRECATED] Generate & Store Primary Interview Question",
+    deprecated=True,
 )
 async def generate_primary_question(
     request: GeneratePrimaryQuestionRequest,
@@ -31,6 +140,8 @@ async def generate_primary_question(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
+    DEPRECATED: Use POST /interview/start instead.
+
     Generate the primary interview question, persist it as an InterviewSession for the user, return the saved session object.
     """
     # User must be authenticated (no guest user support for now)
@@ -133,7 +244,8 @@ async def analyze_answer_gaps(
     "/{session_id}/submit",
     response_model=GapAnalysisOutput,
     status_code=status.HTTP_200_OK,
-    summary="Submit Answer & Get Analysis",
+    summary="[DEPRECATED] Submit Answer & Get Analysis",
+    deprecated=True,
 )
 async def submit_answer(
     session_id: str,
@@ -142,6 +254,8 @@ async def submit_answer(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
+    DEPRECATED: Use POST /interview/answer instead.
+
     Submit answer for a specific question in a session.
     Runs gap analysis and saves the result.
     """
@@ -163,7 +277,8 @@ async def submit_answer(
     "/{session_id}/generate-followup",
     response_model=InterviewSession,
     status_code=status.HTTP_200_OK,
-    summary="Generate Followup Question",
+    summary="[DEPRECATED] Generate Followup Question",
+    deprecated=True,
 )
 async def generate_followup_question(
     session_id: str,
@@ -171,6 +286,8 @@ async def generate_followup_question(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
+    DEPRECATED: Use POST /interview/answer instead.
+
     Generate a followup question based on the last answer and gap analysis.
     The followup question is appended to the session's questions array.
     """

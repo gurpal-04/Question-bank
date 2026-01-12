@@ -1,4 +1,4 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -21,10 +21,10 @@ class GapAnalysisOutput(BaseModel):
     clarity_level: Literal["low", "medium", "high"] = Field(
         description="Reflects structure and signal-to-noise"
     )
-    followup_intent: Literal[
+    followup_intent: Optional [Literal[
         "clarify_confusion",
         "fill_gap",
         "probe_depth",
         "ground_in_practice",
         "validate_understanding",
-    ] = Field(description="The selected follow-up intent based on the analysis rules")
+    ] | None] = Field(description="The selected follow-up intent based on the analysis rules")

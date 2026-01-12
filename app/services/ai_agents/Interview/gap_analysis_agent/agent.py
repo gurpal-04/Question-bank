@@ -37,7 +37,7 @@ gap_analysis_agent = Agent(
         "- confidence_level reflects certainty and assertiveness of the answer\n"
         "- clarity_level reflects structure and signal-to-noise\n\n"
         "FOLLOW-UP INTENT SELECTION:\n"
-        "Choose EXACTLY ONE intent using these rules:\n"
+        "If follow-up IS needed, choose using these rules:\n"
         "- If incorrect_concepts is non-empty → clarify_confusion\n"
         "- Else if missing_concepts is non-empty → fill_gap\n"
         "- Else if covered_concepts is shallow → probe_depth\n"

@@ -45,3 +45,42 @@ def select_primary_skill(
     selected_skill = random.choice(top_candidates)
 
     return selected_skill
+
+
+def select_next_skill_by_importance(
+    skills: List[FrontendSkill],
+    used_skill_ids: List[str],
+    experience_level: str,
+) -> Optional[FrontendSkill]:
+    """
+    Select the highest-importance unused skill for a new primary question.
+
+    Selection criteria:
+    - interview_safe = True
+    - appropriate for experience level
+    - not in used_skill_ids
+
+    Returns:
+        The highest-importance eligible skill, or None if no skills available.
+    """
+    if experience_level not in EXPERIENCE_TO_LEVELS:
+        # Fallback to intermediate if invalid level
+        allowed_levels = EXPERIENCE_TO_LEVELS.get("intermediate", {"foundational", "intermediate"})
+    else:
+        allowed_levels = EXPERIENCE_TO_LEVELS[experience_level]
+
+    # Filter eligible skills
+    eligible = [
+        skill for skill in skills
+        if skill.interview_safe
+        and skill.level in allowed_levels
+        and skill.id not in used_skill_ids
+    ]
+
+    if not eligible:
+        return None
+
+    # Sort by importance (descending) and return the highest
+    eligible.sort(key=lambda s: s.importance, reverse=True)
+
+    return eligible[0]

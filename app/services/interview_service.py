@@ -3,24 +3,36 @@ import random
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from google.cloud import firestore
-from app.models.interview import InterviewSession, CalibrationData, InterviewQuestion
+from app.models.interview import (
+    InterviewSession,
+    CalibrationData,
+    InterviewQuestion,
+    InterviewState,
+    OrchestratorDecision,
+    StartInterviewResponse,
+    AnswerResponse,
+)
 from app.services.ai_agents.Interview.interview_context_agent.agent import (
     generate_interview_context,
 )
 from app.services.primary_question_service import generate_primary_question
-from app.utils.skill_selection import select_primary_skill
+from app.utils.skill_selection import (
+    select_primary_skill,
+    select_next_skill_by_importance,
+)
 from app.utils.archetype_selector import select_question_archetype
 from app.utils.experience_mapper import (
     normalize_experience_for_archetype,
     normalize_experience_for_skill,
 )
-from app.core.config.skillMaps.frontend import FRONTEND_SKILL_MAP
+from app.core.config.skillMaps.frontend import FRONTEND_SKILL_MAP, FrontendSkill
 from app.models.gap_analysis import GapAnalysisOutput
 from app.services.ai_agents.Interview.gap_analysis_agent import (
     gap_analysis_runner,
     gap_analysis_agent,
 )
 from app.services.ai_agents.runner_utils import run_agent_with_runner
+from app.services.orchestrator import orchestrator
 import json
 
 logger = logging.getLogger(__name__)
@@ -346,3 +358,369 @@ class InterviewService:
                 f"Error in generate_and_store_followup_question: {e}", exc_info=True
             )
             raise
+
+    # =========================================================================
+    # NEW ORCHESTRATOR API METHODS
+    # =========================================================================
+
+    async def start_interview(
+        self,
+        user_id: str,
+        role: str,
+        experience_range: str,
+        difficulty: str,
+    ) -> StartInterviewResponse:
+        """
+        Initialize a new interview session and generate the first question.
+
+        This is the entry point for the new orchestrator API.
+        Flow:
+        1. Generate interview context
+        2. Select first skill (highest importance, interview-safe)
+        3. Select archetype
+        4. Generate primary question
+        5. Create & persist session
+        6. Return response with question and state
+        """
+        try:
+            # 1. Generate interview context
+            interview_context = await generate_interview_context(
+                role=role,
+                experience_range=experience_range,
+                difficulty=difficulty,
+            )
+
+            # 2. Skill selection - use highest importance for first question
+            skill_level = normalize_experience_for_skill(experience_range)
+            selected_skill = select_next_skill_by_importance(
+                skills=FRONTEND_SKILL_MAP,
+                used_skill_ids=[],  # No skills used yet
+                experience_level=skill_level,
+            )
+
+            if not selected_skill:
+                # Fallback to random selection if no skill found
+                selected_skill = select_primary_skill(
+                    skills=FRONTEND_SKILL_MAP,
+                    experience_level=skill_level,
+                )
+
+            # 3. Archetype selection
+            archetype_experience = normalize_experience_for_archetype(experience_range)
+            selected_archetype = select_question_archetype(
+                role=role,
+                experience=archetype_experience,
+            )
+
+            # 4. Generate primary question
+            primary_question_data = await generate_primary_question(
+                interview_context=interview_context,
+                selected_skill=selected_skill.label,
+                question_archetype=selected_archetype.label,
+                experience_level=experience_range,
+            )
+
+            # 5. Construct CalibrationData
+            calibration = CalibrationData(
+                selected_skill={
+                    "id": selected_skill.id,
+                    "label": selected_skill.label,
+                    "level": selected_skill.level,
+                    "description": selected_skill.description,
+                },
+                selected_archetype={
+                    "id": selected_archetype.id,
+                    "label": selected_archetype.label,
+                    "description": selected_archetype.description,
+                },
+            )
+
+            # 6. Construct Primary InterviewQuestion with skill_id
+            primary_question = InterviewQuestion(
+                sequence=1,
+                question_type="primary",
+                skill_id=selected_skill.id,
+                question=primary_question_data["question"],
+                archetype=primary_question_data["archetype"],
+            )
+
+            # 7. Persist session to Firestore
+            session_data = {
+                "user_id": user_id,
+                "role": role,
+                "experience_range": experience_range,
+                "difficulty": difficulty,
+                "interview_context": interview_context,
+                "calibration": calibration.model_dump(),
+                "questions": [primary_question.model_dump()],
+                "created_at": datetime.utcnow(),
+                "updated_at": datetime.utcnow(),
+            }
+            doc_ref = self.db.collection("interview_sessions").document()
+            doc_ref.set(session_data)
+            session_id = doc_ref.id
+            session_data["id"] = session_id
+            session = InterviewSession(**session_data)
+
+            # 8. Compute initial state
+            interview_state = orchestrator.compute_state(session)
+
+            return StartInterviewResponse(
+                interview_id=session_id,
+                question=primary_question,
+                interview_state=interview_state,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in start_interview: {e}", exc_info=True)
+            raise
+
+    async def process_answer(
+        self,
+        interview_id: str,
+        answer_text: str,
+    ) -> AnswerResponse:
+        """
+        Process a candidate's answer and determine the next action.
+
+        This is the main orchestration method for the new API.
+        Flow:
+        1. Load session
+        2. Find unanswered question, store answer
+        3. Run gap analysis
+        4. Compute state
+        5. Run orchestrator decision
+        6. If ASK_FOLLOWUP: generate follow-up
+        7. If ASK_NEW_PRIMARY: select next skill, generate primary
+        8. If END_INTERVIEW: mark complete
+        9. Persist updates
+        10. Return response
+        """
+        try:
+            # 1. Load session
+            session = self.get_session_by_id(interview_id)
+            if not session:
+                raise ValueError(f"Interview session {interview_id} not found")
+
+            if not session.questions:
+                raise ValueError("Session contains no questions")
+
+            # 2. Find the unanswered question (should be the last one)
+            unanswered_question = None
+            unanswered_index = -1
+            for idx, q in enumerate(session.questions):
+                if q.answer is None:
+                    unanswered_question = q
+                    unanswered_index = idx
+                    break
+
+            if not unanswered_question:
+                raise ValueError("No unanswered question found in session")
+
+            # 3. Run gap analysis
+            expected_concepts = session.interview_context.get("expected_concepts", [])
+            gap_analysis_result = await self.perform_gap_analysis(
+                question=unanswered_question.question,
+                answer=answer_text,
+                expected_concepts=expected_concepts,
+            )
+
+            # 4. Update question with answer and gap analysis
+            updated_questions = [q.model_dump() for q in session.questions]
+            updated_questions[unanswered_index]["answer"] = answer_text
+            updated_questions[unanswered_index][
+                "gap_analysis"
+            ] = gap_analysis_result.model_dump()
+
+            # Temporarily update session object for state computation
+            session.questions[unanswered_index].answer = answer_text
+            session.questions[unanswered_index].gap_analysis = (
+                gap_analysis_result.model_dump()
+            )
+
+            # 5. Compute state after answer
+            interview_state = orchestrator.compute_state(session)
+
+            # 6. Run orchestrator decision
+            decision, reason, next_skill = orchestrator.decide_next_action(
+                state=interview_state,
+                gap_analysis=gap_analysis_result,
+                experience_level=session.experience_range,
+            )
+
+            next_question = None
+            is_complete = False
+
+            # 7. Execute decision
+            if decision == OrchestratorDecision.ASK_FOLLOWUP:
+                # Generate follow-up question
+                next_question = await self._generate_followup_question(
+                    session=session,
+                    gap_analysis=gap_analysis_result,
+                )
+                updated_questions.append(next_question.model_dump())
+
+            elif decision == OrchestratorDecision.ASK_NEW_PRIMARY:
+                # Generate new primary question with next skill
+                if next_skill:
+                    next_question = await self._generate_new_primary_question(
+                        session=session,
+                        skill=next_skill,
+                    )
+                    updated_questions.append(next_question.model_dump())
+
+                    # Update calibration with new skill
+                    calibration_data = (
+                        session.calibration.model_dump() if session.calibration else {}
+                    )
+                    calibration_data["selected_skill"] = {
+                        "id": next_skill.id,
+                        "label": next_skill.label,
+                        "level": next_skill.level,
+                        "description": next_skill.description,
+                    }
+
+            elif decision == OrchestratorDecision.END_INTERVIEW:
+                is_complete = True
+
+            # 8. Persist updates
+            doc_ref = self.db.collection("interview_sessions").document(interview_id)
+            update_data = {
+                "questions": updated_questions,
+                "updated_at": datetime.utcnow(),
+            }
+
+            if decision == OrchestratorDecision.ASK_NEW_PRIMARY and next_skill:
+                update_data["calibration"] = {
+                    "selected_skill": {
+                        "id": next_skill.id,
+                        "label": next_skill.label,
+                        "level": next_skill.level,
+                        "description": next_skill.description,
+                    },
+                    "selected_archetype": (
+                        session.calibration.selected_archetype
+                        if session.calibration
+                        else {}
+                    ),
+                }
+
+            doc_ref.update(update_data)
+
+            # 9. Recompute state after adding new question
+            updated_session = self.get_session_by_id(interview_id)
+            if updated_session:
+                interview_state = orchestrator.compute_state(updated_session)
+
+            return AnswerResponse(
+                decision=decision,
+                reason=reason,
+                next_question=next_question,
+                gap_analysis=gap_analysis_result.model_dump(),
+                interview_state=interview_state,
+                is_complete=is_complete,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in process_answer: {e}", exc_info=True)
+            raise
+
+    async def _generate_followup_question(
+        self,
+        session: InterviewSession,
+        gap_analysis: GapAnalysisOutput,
+    ) -> InterviewQuestion:
+        """
+        Internal helper to generate a follow-up question.
+        """
+        from app.services.ai_agents.Interview.followup_question_generator.agent import (
+            followup_question_generator_runner,
+            followup_question_generator_agent,
+        )
+
+        # Get the last answered question
+        last_answered = None
+        for q in reversed(session.questions):
+            if q.answer:
+                last_answered = q
+                break
+
+        if not last_answered:
+            raise ValueError("No answered question found")
+
+        primary_skill = ""
+        if session.calibration and session.calibration.selected_skill:
+            primary_skill = session.calibration.selected_skill.get("label", "")
+
+        prompt_data = {
+            "interview_context": session.interview_context,
+            "primary_skill": primary_skill,
+            "previous_question": last_answered.question,
+            "candidate_answer": last_answered.answer,
+            "evaluation_signals": gap_analysis.model_dump(),
+            "followup_intent": gap_analysis.followup_intent,
+        }
+
+        prompt = json.dumps(prompt_data, indent=2)
+
+        result = await run_agent_with_runner(
+            runner=followup_question_generator_runner,
+            agent=followup_question_generator_agent,
+            prompt=prompt,
+        )
+
+        if isinstance(result, dict):
+            followup_data = result
+        else:
+            followup_data = json.loads(result) if isinstance(result, str) else result
+
+        # Get current skill_id from the last primary question
+        current_skill_id = None
+        for q in reversed(session.questions):
+            if q.question_type == "primary" and q.skill_id:
+                current_skill_id = q.skill_id
+                break
+
+        next_sequence = len(session.questions) + 1
+        return InterviewQuestion(
+            sequence=next_sequence,
+            question_type="follow_up",
+            skill_id=current_skill_id,
+            intent=followup_data.get("intent"),
+            question=followup_data.get("question"),
+            archetype=None,
+        )
+
+    async def _generate_new_primary_question(
+        self,
+        session: InterviewSession,
+        skill: FrontendSkill,
+    ) -> InterviewQuestion:
+        """
+        Internal helper to generate a new primary question for a different skill.
+        """
+        # Select a new archetype
+        archetype_experience = normalize_experience_for_archetype(
+            session.experience_range
+        )
+        selected_archetype = select_question_archetype(
+            role=session.role,
+            experience=archetype_experience,
+        )
+
+        # Generate primary question for the new skill
+        primary_question_data = await generate_primary_question(
+            interview_context=session.interview_context,
+            selected_skill=skill.label,
+            question_archetype=selected_archetype.label,
+            experience_level=session.experience_range,
+        )
+
+        next_sequence = len(session.questions) + 1
+        return InterviewQuestion(
+            sequence=next_sequence,
+            question_type="primary",
+            skill_id=skill.id,
+            question=primary_question_data["question"],
+            archetype=primary_question_data["archetype"],
+        )
