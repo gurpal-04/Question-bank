@@ -112,6 +112,7 @@ class InterviewQuestion(BaseModel):
     intent: Optional[str] = None
     question: str
     answer: Optional[str] = None
+    answered_at: Optional[datetime] = None
     gap_analysis: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

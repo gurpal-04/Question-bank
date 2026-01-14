@@ -156,11 +156,15 @@ class InterviewService:
             )
 
             if isinstance(result, dict):
-                return GapAnalysisOutput(**result)
+                gap_analysis = GapAnalysisOutput(**result)
+                self._validate_dimension_scores(gap_analysis)
+                return gap_analysis
 
             try:
                 parsed = json.loads(result) if isinstance(result, str) else result
-                return GapAnalysisOutput(**parsed)
+                gap_analysis = GapAnalysisOutput(**parsed)
+                self._validate_dimension_scores(gap_analysis)
+                return gap_analysis
             except (json.JSONDecodeError, TypeError) as e:
                 logger.error(f"Failed to parse agent output: {e}")
                 raise ValueError(f"Agent returned invalid output format: {result}")
@@ -168,6 +172,52 @@ class InterviewService:
         except Exception as e:
             logger.error(f"Error in perform_gap_analysis: {e}", exc_info=True)
             raise
+
+    def _validate_dimension_scores(self, gap_analysis: GapAnalysisOutput) -> None:
+        """
+        Validate consistency between signals and dimension scores.
+        Logs warnings for inconsistencies but does not block.
+        """
+        # 1. Clarity consistency
+        if gap_analysis.clarity_level == "low" and gap_analysis.clarity_score > 2.5:
+            logger.warning(
+                f"GapAnalysis: clarity_level 'low' but score {gap_analysis.clarity_score} > 2.5"
+            )
+        elif gap_analysis.clarity_level == "high" and gap_analysis.clarity_score < 3.5:
+            logger.warning(
+                f"GapAnalysis: clarity_level 'high' but score {gap_analysis.clarity_score} < 3.5"
+            )
+
+        # 2. Depth consistency
+        if len(gap_analysis.missing_concepts) > 3 and gap_analysis.depth_score >= 3.5:
+            logger.warning(
+                f"GapAnalysis: >3 missing concepts but depth_score {gap_analysis.depth_score} >= 3.5"
+            )
+        if gap_analysis.incorrect_concepts and gap_analysis.depth_score >= 4.0:
+            logger.warning(
+                f"GapAnalysis: incorrect concepts present but depth_score {gap_analysis.depth_score} >= 4.0"
+            )
+
+        # 3. Structure consistency
+        if (
+            len(gap_analysis.confusion_signals) > 2
+            and gap_analysis.structure_score >= 4.0
+        ):
+            logger.warning(
+                f"GapAnalysis: >2 confusion signals but structure_score {gap_analysis.structure_score} >= 4.0"
+            )
+
+        # 4. Confidence consistency
+        avg_score = (
+            gap_analysis.structure_score
+            + gap_analysis.depth_score
+            + gap_analysis.tradeoffs_score
+            + gap_analysis.clarity_score
+        ) / 4.0
+        if gap_analysis.confidence_level == "low" and avg_score >= 4.0:
+            logger.warning(
+                f"GapAnalysis: confidence 'low' but avg score {avg_score} >= 4.0"
+            )
 
     def get_sessions_by_user(self, user_id: str) -> List[InterviewSession]:
         session_docs = (
@@ -528,6 +578,9 @@ class InterviewService:
             # 4. Update question with answer and gap analysis
             updated_questions = [q.model_dump() for q in session.questions]
             updated_questions[unanswered_index]["answer"] = answer_text
+            updated_questions[unanswered_index][
+                "answered_at"
+            ] = datetime.utcnow().isoformat()
             updated_questions[unanswered_index][
                 "gap_analysis"
             ] = gap_analysis_result.model_dump()

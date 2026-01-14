@@ -21,10 +21,33 @@ class GapAnalysisOutput(BaseModel):
     clarity_level: Literal["low", "medium", "high"] = Field(
         description="Reflects structure and signal-to-noise"
     )
-    followup_intent: Optional [Literal[
+    followup_intent: Literal[
         "clarify_confusion",
         "fill_gap",
         "probe_depth",
         "ground_in_practice",
         "validate_understanding",
-    ] | None] = Field(description="The selected follow-up intent based on the analysis rules")
+    ] = Field(description="The selected follow-up intent based on the analysis rules")
+
+    # New scoring fields
+    structure_score: float = Field(
+        ge=1.0,
+        le=5.0,
+        description="Rating of answer organization and flow (1.0-5.0)",
+    )
+    depth_score: float = Field(
+        ge=1.0,
+        le=5.0,
+        description="Rating of technical depth and detail (1.0-5.0)",
+    )
+    tradeoffs_score: float = Field(
+        ge=1.0,
+        le=5.0,
+        description="Rating of pros/cons and contextual awareness (1.0-5.0)",
+    )
+    clarity_score: float = Field(
+        ge=1.0,
+        le=5.0,
+        description="Rating of communication clarity (1.0-5.0)",
+    )
+    agent_version: str = Field("2.0", description="Version of the gap analysis agent")
