@@ -94,6 +94,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",
         "http://localhost:3000",
+        "https://id-preview--d72cdb61-6a23-4e77-87a8-02153d82ab6a.lovable.app"
     ],  # Add your frontend URLs
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
