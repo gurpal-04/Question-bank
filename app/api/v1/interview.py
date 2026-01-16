@@ -9,6 +9,8 @@ from app.models.interview import (
     GeneratePrimaryQuestionResponse,
     InterviewSession,
     InterviewSessionListResponse,
+    InterviewListItem,
+    InterviewListResponse,
     GapAnalysisRequest,
     SubmitAnswerRequest,
     GenerateFollowupQuestionRequest,
@@ -32,9 +34,10 @@ router = APIRouter()
 @router.post(
     "/start",
     response_model=StartInterviewResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
     summary="Start Interview",
-    description="Initialize a new interview session and get the first question. "
+    description="Generate the first question for an existing interview session. "
+                "The session should be created via /v1/interview-context/generate first. "
                 "The backend controls all flow decisions.",
 )
 async def start_interview(
@@ -43,11 +46,12 @@ async def start_interview(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    Start a new interview session.
+    Start an interview by generating the first question.
 
-    - Initializes interview state
+    - Loads existing session from DB (created via /v1/interview-context/generate)
     - Selects the first skill (highest importance, interview-safe)
     - Generates the first primary question
+    - Updates session with first question and sets status to "in_progress"
     - Returns the interview ID, first question, and current state
     """
     if not current_user:
@@ -59,12 +63,15 @@ async def start_interview(
     service = InterviewService(db)
     try:
         response = await service.start_interview(
+            session_id=request.session_id,
             user_id=current_user.id,
-            role=request.role,
-            experience_range=request.experience_range,
-            difficulty=request.difficulty,
         )
         return response
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -169,7 +176,7 @@ async def generate_primary_question(
 
 @router.get(
     "/",
-    response_model=InterviewSessionListResponse,
+    response_model=InterviewListResponse,
     status_code=status.HTTP_200_OK,
     summary="Get All Sessions For User",
 )
@@ -180,13 +187,28 @@ async def get_interview_sessions(
 ):
     """
     Get all InterviewSessions for a user (from auth or query param).
+    Returns simplified session data: id, role, experience, difficulty, status, created.
     """
     target_user_id = current_user.id if current_user else user_id
     if not target_user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
     service = InterviewService(db)
     sessions = await asyncio.to_thread(service.get_sessions_by_user, target_user_id)
-    return InterviewSessionListResponse(sessions=sessions)
+    
+    # Map full sessions to simplified list items
+    session_items = [
+        InterviewListItem(
+            id=session.id or "",
+            role=session.role,
+            experience_range=session.experience_range,
+            difficulty=session.difficulty,
+            status=session.status or "pending",
+            created_at=session.created_at,
+        )
+        for session in sessions
+    ]
+    
+    return InterviewListResponse(sessions=session_items)
 
 
 @router.get(

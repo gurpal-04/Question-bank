@@ -127,12 +127,31 @@ class InterviewSession(BaseModel):
     calibration: Optional[CalibrationData] = None
     questions: List[InterviewQuestion] = []
     interview_summary: Optional[Dict[str, Any]] = None
+    status: str = Field(default="pending", description="Interview status: pending, in_progress, or completed")
     created_at: datetime
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class InterviewSessionListResponse(BaseModel):
     sessions: List[InterviewSession]
+
+
+class InterviewListItem(BaseModel):
+    """Simplified interview session model for list endpoints"""
+    id: str = Field(description="Interview session ID")
+    role: str = Field(description="Job role")
+    experience: str = Field(description="Experience range", alias="experience_range")
+    difficulty: str = Field(description="Difficulty level")
+    status: str = Field(description="Interview status: completed, in_progress, or pending")
+    created: datetime = Field(description="Creation timestamp", alias="created_at")
+
+    class Config:
+        populate_by_name = True
+
+
+class InterviewListResponse(BaseModel):
+    """Response model for GET /interview endpoint"""
+    sessions: List[InterviewListItem]
 
 
 # === New Orchestrator API Models ===
@@ -169,18 +188,10 @@ class InterviewState(BaseModel):
 class StartInterviewRequest(BaseModel):
     """Request model for POST /interview/start"""
 
-    role: str = Field(
+    session_id: str = Field(
         ...,
-        description="The job role being interviewed for (e.g., 'Frontend Engineer')",
+        description="The interview session ID created from /v1/interview-context/generate",
         min_length=1,
-    )
-    experience_range: str = Field(
-        ...,
-        description="The candidate's experience level (e.g., '0-3 years', '3-5 years')",
-        min_length=1,
-    )
-    difficulty: Literal["Easy", "Medium", "Hard"] = Field(
-        ..., description="The difficulty level of the interview"
     )
 
 

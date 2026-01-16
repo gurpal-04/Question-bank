@@ -121,6 +121,7 @@ class InterviewService:
                 "interview_context": interview_context,
                 "calibration": calibration.model_dump(),
                 "questions": [primary_question.model_dump()],
+                "status": "in_progress",
                 "created_at": datetime.utcnow(),
                 "updated_at": datetime.utcnow(),
             }
@@ -415,30 +416,40 @@ class InterviewService:
 
     async def start_interview(
         self,
+        session_id: str,
         user_id: str,
-        role: str,
-        experience_range: str,
-        difficulty: str,
     ) -> StartInterviewResponse:
         """
-        Initialize a new interview session and generate the first question.
+        Generate the first question for an existing interview session.
 
         This is the entry point for the new orchestrator API.
         Flow:
-        1. Generate interview context
+        1. Load existing session from DB (created via /v1/interview-context/generate)
         2. Select first skill (highest importance, interview-safe)
         3. Select archetype
         4. Generate primary question
-        5. Create & persist session
+        5. Update session with first question and set status to "in_progress"
         6. Return response with question and state
         """
         try:
-            # 1. Generate interview context
-            interview_context = await generate_interview_context(
-                role=role,
-                experience_range=experience_range,
-                difficulty=difficulty,
-            )
+            # 1. Load existing session from DB
+            session = self.get_session_by_id(session_id)
+            if not session:
+                raise ValueError(f"Interview session {session_id} not found")
+            
+            # Verify user owns this session
+            if session.user_id != user_id:
+                raise ValueError(f"Interview session {session_id} does not belong to user {user_id}")
+            
+            # Verify session is in pending state (hasn't started yet)
+            if session.status != "pending":
+                raise ValueError(f"Interview session {session_id} is already started (status: {session.status})")
+            
+            # Use session data
+            interview_context = session.interview_context
+            role = session.role
+            experience_range = session.experience_range
+            difficulty = session.difficulty
 
             # 2. Skill selection - use highest importance for first question
             skill_level = normalize_experience_for_skill(experience_range)
@@ -494,26 +505,23 @@ class InterviewService:
                 archetype=primary_question_data["archetype"],
             )
 
-            # 7. Persist session to Firestore
-            session_data = {
-                "user_id": user_id,
-                "role": role,
-                "experience_range": experience_range,
-                "difficulty": difficulty,
-                "interview_context": interview_context,
+            # 7. Update session in Firestore with first question and status
+            doc_ref = self.db.collection("interview_sessions").document(session_id)
+            update_data = {
                 "calibration": calibration.model_dump(),
                 "questions": [primary_question.model_dump()],
-                "created_at": datetime.utcnow(),
+                "status": "in_progress",
                 "updated_at": datetime.utcnow(),
             }
-            doc_ref = self.db.collection("interview_sessions").document()
-            doc_ref.set(session_data)
-            session_id = doc_ref.id
-            session_data["id"] = session_id
-            session = InterviewSession(**session_data)
+            doc_ref.update(update_data)
+            
+            # 8. Reload updated session
+            updated_session = self.get_session_by_id(session_id)
+            if not updated_session:
+                raise ValueError(f"Failed to reload updated session {session_id}")
 
-            # 8. Compute initial state
-            interview_state = orchestrator.compute_state(session)
+            # 9. Compute initial state
+            interview_state = orchestrator.compute_state(updated_session)
 
             return StartInterviewResponse(
                 interview_id=session_id,
@@ -521,6 +529,9 @@ class InterviewService:
                 interview_state=interview_state,
             )
 
+        except ValueError as e:
+            logger.error(f"Validation error in start_interview: {e}", exc_info=True)
+            raise
         except Exception as e:
             logger.error(f"Error in start_interview: {e}", exc_info=True)
             raise
@@ -642,6 +653,10 @@ class InterviewService:
                 "questions": updated_questions,
                 "updated_at": datetime.utcnow(),
             }
+
+            # Update status to completed when interview ends
+            if decision == OrchestratorDecision.END_INTERVIEW:
+                update_data["status"] = "completed"
 
             if decision == OrchestratorDecision.ASK_NEW_PRIMARY and next_skill:
                 update_data["calibration"] = {
