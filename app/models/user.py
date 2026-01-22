@@ -6,10 +6,11 @@ from datetime import datetime
 class User(BaseModel):
     """User model for Firestore"""
 
-    id: Optional[str] = None  # Firestore document ID
-    email: EmailStr
-    hashed_password: str
-    full_name: str
+    id: Optional[str] = None  # Firestore document ID or Firebase UID
+    email: Optional[EmailStr] = None  # Optional for anonymous users
+    hashed_password: Optional[str] = None  # None for anonymous users
+    full_name: Optional[str] = None  # Optional for anonymous users
+    is_anonymous: bool = False  # True for Firebase anonymous users
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
@@ -51,7 +52,8 @@ class Token(BaseModel):
 
 
 class TokenData(BaseModel):
-    """JWT token payload data"""
+    """JWT or Firebase token payload data"""
 
     user_id: Optional[str] = None
     email: Optional[str] = None
+    is_anonymous: bool = False  # True for Firebase anonymous users

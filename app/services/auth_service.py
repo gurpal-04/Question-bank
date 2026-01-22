@@ -111,10 +111,15 @@ class AuthService:
         self, guest_id: str, current_user: User
     ) -> Dict[str, Any]:
         """
-        Migrate all guest assessments and results to the authenticated user
+        Migrate all guest data (assessments, results, and interview sessions) to the authenticated user.
+        
+        Note: This is typically used when an anonymous user signs up and wants to keep their data.
+        However, with Firebase Anonymous Auth, the UID stays the same after linking, so migration
+        may not be necessary. This method is kept for backward compatibility.
         """
         migrated_assessments = 0
         migrated_results = 0
+        migrated_interviews = 0
 
         # Migrate assessments
         assessments_ref = self.db.collection("assessments")
@@ -132,9 +137,18 @@ class AuthService:
             result_doc.reference.update({"user_id": current_user.id})
             migrated_results += 1
 
+        # Migrate interview sessions
+        interviews_ref = self.db.collection("interview_sessions")
+        guest_interviews = interviews_ref.where("user_id", "==", guest_id).stream()
+
+        for interview_doc in guest_interviews:
+            interview_doc.reference.update({"user_id": current_user.id})
+            migrated_interviews += 1
+
         return {
             "success": True,
             "migrated_assessments": migrated_assessments,
             "migrated_results": migrated_results,
-            "message": f"Successfully migrated {migrated_assessments} assessments and {migrated_results} results",
+            "migrated_interviews": migrated_interviews,
+            "message": f"Successfully migrated {migrated_assessments} assessments, {migrated_results} results, and {migrated_interviews} interview sessions",
         }

@@ -188,10 +188,15 @@ async def get_interview_sessions(
     """
     Get all InterviewSessions for a user (from auth or query param).
     Returns simplified session data: id, role, experience, difficulty, status, created.
+    
+    Works with both authenticated users (JWT or Firebase tokens) and guest users (Firebase anonymous tokens).
     """
     target_user_id = current_user.id if current_user else user_id
     if not target_user_id:
-        raise HTTPException(status_code=400, detail="user_id is required")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id is required. Provide either a valid authentication token or user_id query parameter."
+        )
     service = InterviewService(db)
     sessions = await asyncio.to_thread(service.get_sessions_by_user, target_user_id)
     
