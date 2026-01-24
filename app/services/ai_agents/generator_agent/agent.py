@@ -10,7 +10,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 generator_agent = Agent(
-    model="groq/llama-3.3-70b-versatile",
+    model="quality_llm",
     name="assessment_generator_agent",
     description=(
         "An AI agent specialized in generating high-quality multiple-choice questions (MCQs) "

@@ -6,7 +6,56 @@ from typing import Any, List, Optional
 from pydantic import BaseModel
 import litellm
 
+from litellm import Router
+
 logger = logging.getLogger(__name__)
+
+# Initialize LiteLLM Router
+# Note: We use model_name aliases to allow agents to pick a "tier"
+llm_router = Router(
+    model_list=[
+        # 🔹 PRIMARY MODEL (cheap & fast)
+        {
+            "model_name": "primary_llm",
+            "litellm_params": {
+                "model": "groq/llama-3.1-8b-instant",
+                "api_key": os.environ.get("GROQ_API_KEY"),
+                "timeout": 10,
+                "max_tokens": 800,
+                "temperature": 0.4,
+            },
+        },
+        # 🔹 HIGH-QUALITY MODEL (use sparingly)
+        {
+            "model_name": "quality_llm",
+            "litellm_params": {
+                "model": "groq/llama-3.3-70b-versatile",
+                "api_key": os.environ.get("GROQ_API_KEY"),
+                "timeout": 15,
+                "max_tokens": 1200,
+                "temperature": 0.3,
+            },
+        },
+        # 🔹 EMERGENCY FALLBACK (optional)
+        {
+            "model_name": "fallback_llm",
+            "litellm_params": {
+                "model": "gemini/gemini-2.5-flash",
+                "api_key": os.environ.get(
+                    "GOOGLE_API_KEY", os.environ.get("GEMINI_API_KEY")
+                ),
+                "timeout": 15,
+                "max_tokens": 800,
+                "temperature": 0.4,
+            },
+        },
+    ],
+    # 🔁 fallback logic
+    fallbacks=[
+        {"primary_llm": ["quality_llm", "fallback_llm"]},
+        {"quality_llm": ["primary_llm", "fallback_llm"]},
+    ],
+)
 
 
 class ContentPart:
@@ -39,6 +88,7 @@ class LiteLLMAgent:
         output_schema: Optional[Any] = None,
         output_key: Optional[str] = None,
     ):
+        # The model here can now be an alias like "primary_llm"
         self.model = model
         self.name = name
         self.description = description
@@ -97,7 +147,9 @@ class LiteLLMRunner:
             {"role": "user", "content": prompt_text},
         ]
 
-        logger.info(f"LiteLLMRunner: Starting generation for agent '{self.agent.name}'")
+        logger.info(
+            f"LiteLLMRunner: Starting generation for agent '{self.agent.name}' using model '{self.agent.model}'"
+        )
         logger.debug(f"LiteLLMRunner: System Message: {messages[0]['content']}")
         logger.debug(f"LiteLLMRunner: User Prompt: {prompt_text}")
 
@@ -110,8 +162,8 @@ class LiteLLMRunner:
                     self.agent.output_schema.model_json_schema(), indent=2
                 )
 
-            # For Groq, it's safer to use json_object or pass the schema if supported
-            if "groq/" in self.agent.model:
+            # Check if using a model name that likely supports json_object (Groq or aliases)
+            if "groq/" in self.agent.model or "_llm" in self.agent.model:
                 response_format = {"type": "json_object"}
                 # Add instruction to ensure JSON output
                 if "JSON" not in messages[0]["content"]:
@@ -124,19 +176,17 @@ class LiteLLMRunner:
         logger.debug(f"LiteLLMRunner: Response Format: {response_format}")
 
         try:
-            # Call litellm
-            # Ensure GROQ_API_KEY is available if using groq
-            if "groq/" in self.agent.model and not os.environ.get("GROQ_API_KEY"):
-                logger.warning("GROQ_API_KEY not found in environment variables.")
-
-            response = await litellm.acompletion(
+            # Call litellm router
+            response = await llm_router.acompletion(
                 model=self.agent.model,
                 messages=messages,
                 response_format=response_format,
             )
 
             final_text = response.choices[0].message.content
-            logger.info(f"LiteLLMRunner: Received response (length: {len(final_text)})")
+            logger.info(
+                f"LiteLLMRunner: Received response (length: {len(final_text)}) from model '{response.model}'"
+            )
             logger.debug(f"LiteLLMRunner: Raw LLM Response: {final_text}")
 
             # Update session state if output_key is present
