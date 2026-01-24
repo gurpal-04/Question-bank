@@ -23,8 +23,15 @@ async def run_agent_with_runner(runner, agent, prompt: str) -> Any:
         app_name=runner.app_name, user_id=user_id, session_id=session_id
     )
 
-    # Create user message using types.Content (ADK format)
-    user_msg = types.Content(role="user", parts=[types.Part(text=prompt)])
+    # Create user message
+    # For LiteLLM shim, we can pass a string or a simplified object
+    # For Google ADK, it expects types.Content
+    try:
+        from google.genai import types
+
+        user_msg = types.Content(role="user", parts=[types.Part(text=prompt)])
+    except ImportError:
+        user_msg = prompt
 
     final_text = None
 
@@ -32,7 +39,7 @@ async def run_agent_with_runner(runner, agent, prompt: str) -> Any:
         user_id=user_id, session_id=session_id, new_message=user_msg
     ):
         if event.is_final_response():
-            if event.content and event.content.parts:
+            if hasattr(event, "content") and event.content and event.content.parts:
                 final_text = event.content.parts[0].text
 
     # If agent has output_key, try to get structured output from session state
@@ -55,5 +62,3 @@ async def run_agent_with_runner(runner, agent, prompt: str) -> Any:
             logger.warning(f"Could not get stored output from session: {e}")
 
     return final_text
-
-

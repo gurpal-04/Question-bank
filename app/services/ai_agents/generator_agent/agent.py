@@ -1,6 +1,8 @@
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 from app.models.questions import QuestionsList
 
 # Initialize session service
@@ -8,7 +10,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 generator_agent = Agent(
-    model="gemini-2.5-flash",
+    model="groq/llama-3.3-70b-versatile",
     name="assessment_generator_agent",
     description=(
         "An AI agent specialized in generating high-quality multiple-choice questions (MCQs) "
@@ -23,8 +25,9 @@ generator_agent = Agent(
         "2. `options`: A list of 4 possible answers."
         "3. `correct_answer`: The correct option exactly as it appears in `options`."
         "4. `explanation`: A concise explanation (1–2 sentences) of why the correct answer is right."
-        "5. `metadata`: Include `topic`, `subtopic` (if identifiable), `difficulty`, and `type='MCQ'`."
-        "Output must be a valid JSON array of question objects — no extra text, comments, or markdown. "
+        "5. `difficulty`: The difficulty level exactly as requested (Beginner, Intermediate, or Advanced)."
+        "6. `metadata`: A nested object containing `topic`, `subtopic` (if identifiable), and `type='MCQ'`."
+        "Output must be a valid JSON object with a 'questions' key containing the array of question objects. "
         "Ensure clarity, accuracy, and relevance to the requested topic and difficulty level. "
         "Vary the question patterns to cover conceptual, practical, and scenario-based styles."
     ),

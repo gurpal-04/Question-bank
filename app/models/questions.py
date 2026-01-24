@@ -20,8 +20,8 @@ class Question(BaseModel):
     explanation: str = Field(
         ..., description="Short explanation or reasoning behind the correct answer."
     )
-    difficulty: str = Field(
-        ..., description="Difficulty level of the question (easy, medium, hard)."
+    difficulty: Optional[str] = Field(
+        None, description="Difficulty level of the question (easy, medium, hard)."
     )
     metadata: Metadata = Field(..., description="Structured metadata for the question.")
 
