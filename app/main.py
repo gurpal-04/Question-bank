@@ -79,6 +79,7 @@ from app.api.v1 import (
     interview_context,
     interview,
     analytics,
+    users,
 )
 
 # Create FastAPI app
@@ -128,6 +129,7 @@ app.include_router(
 )
 app.include_router(interview.router, prefix="/v1/interview", tags=["interview"])
 app.include_router(analytics.router, prefix="/v1/analytics", tags=["analytics"])
+app.include_router(users.router, prefix="/v1/users", tags=["users"])
 
 
 @app.get("/")

@@ -25,6 +25,7 @@ from app.services.ai_agents.feedback_agent.feedback_agent import (
     feedback_agent,
 )
 from app.services.ai_agents.runner_utils import run_agent_with_runner
+from app.services.user_dashboard_service import UserDashboardService
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,13 @@ class AssessmentService:
 
             # Convert to response format
             questions_response = [QuestionResponse(**q) for q in questions]
+
+            # Trigger dashboard update (background)
+            try:
+                dashboard_service = UserDashboardService(self.db)
+                asyncio.create_task(dashboard_service.update_dashboard(user_id))
+            except Exception as e:
+                logger.error(f"Failed to trigger dashboard update: {e}")
 
             return GenerateAssessmentResponse(
                 assessment_id=assessment_id,
@@ -314,6 +322,13 @@ class AssessmentService:
                 f"Failed to update assessment {request.assessment_id} with result_id: {e}"
             )
             # We don't fail the request if this update fails, as the result is already created
+
+        # Trigger dashboard update (background)
+        try:
+            dashboard_service = UserDashboardService(self.db)
+            asyncio.create_task(dashboard_service.update_dashboard(user_id))
+        except Exception as e:
+            logger.error(f"Failed to trigger dashboard update: {e}")
 
         return SubmitAssessmentResponse(
             score=score,

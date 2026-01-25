@@ -34,6 +34,8 @@ from app.services.ai_agents.Interview.gap_analysis_agent import (
 from app.services.ai_agents.runner_utils import run_agent_with_runner
 from app.services.orchestrator import orchestrator
 import json
+import asyncio
+from app.services.user_dashboard_service import UserDashboardService
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +131,14 @@ class InterviewService:
             doc_ref.set(session_data)
             session_id = doc_ref.id
             session_data["id"] = session_id
+
+            # Trigger dashboard update (background)
+            try:
+                dashboard_service = UserDashboardService(self.db)
+                asyncio.create_task(dashboard_service.update_dashboard(user_id))
+            except Exception as e:
+                logger.error(f"Failed to trigger dashboard update: {e}")
+
             return InterviewSession(**session_data)
         except Exception as e:
             logger.error(
@@ -436,15 +446,19 @@ class InterviewService:
             session = self.get_session_by_id(session_id)
             if not session:
                 raise ValueError(f"Interview session {session_id} not found")
-            
+
             # Verify user owns this session
             if session.user_id != user_id:
-                raise ValueError(f"Interview session {session_id} does not belong to user {user_id}")
-            
+                raise ValueError(
+                    f"Interview session {session_id} does not belong to user {user_id}"
+                )
+
             # Verify session is in pending state (hasn't started yet)
             if session.status != "pending":
-                raise ValueError(f"Interview session {session_id} is already started (status: {session.status})")
-            
+                raise ValueError(
+                    f"Interview session {session_id} is already started (status: {session.status})"
+                )
+
             # Use session data
             interview_context = session.interview_context
             role = session.role
@@ -514,7 +528,7 @@ class InterviewService:
                 "updated_at": datetime.utcnow(),
             }
             doc_ref.update(update_data)
-            
+
             # 8. Reload updated session
             updated_session = self.get_session_by_id(session_id)
             if not updated_session:
@@ -679,6 +693,15 @@ class InterviewService:
             updated_session = self.get_session_by_id(interview_id)
             if updated_session:
                 interview_state = orchestrator.compute_state(updated_session)
+
+            # Trigger dashboard update (background) if completed
+            if is_complete:
+                try:
+                    user_id = session.user_id
+                    dashboard_service = UserDashboardService(self.db)
+                    asyncio.create_task(dashboard_service.update_dashboard(user_id))
+                except Exception as e:
+                    logger.error(f"Failed to trigger dashboard update: {e}")
 
             return AnswerResponse(
                 decision=decision,

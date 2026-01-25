@@ -9,6 +9,8 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from google.cloud import firestore
+import asyncio
+from app.services.user_dashboard_service import UserDashboardService
 
 from app.models.interview import InterviewSession, InterviewQuestion
 from app.models.analytics import (
@@ -142,6 +144,14 @@ class AnalyticsService:
 
             # 13. Store analytics
             self._store_analytics(analytics)
+
+            # Trigger dashboard update (background)
+            try:
+                user_id = session.user_id
+                dashboard_service = UserDashboardService(self.db)
+                asyncio.create_task(dashboard_service.update_dashboard(user_id))
+            except Exception as e:
+                logger.error(f"Failed to trigger dashboard update: {e}")
 
             return analytics
 
@@ -602,7 +612,7 @@ class AnalyticsService:
     ) -> Optional[str]:
         """Compute average response time if timestamps available."""
         from datetime import timezone
-        
+
         response_times = []
 
         for q in questions:
