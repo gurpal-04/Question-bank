@@ -15,7 +15,7 @@ from app.models.assessment import (
     AssessmentListResponse,
     AssessmentSummary,
 )
-from app.models.questions import QuestionResponse
+from app.models.questions import QuestionResponse, AssessmentQuestionResponse
 from app.services.ai_agents.generator_agent.agent import (
     generator_runner,
     generator_agent,
@@ -88,8 +88,8 @@ class AssessmentService:
             _, doc_ref = self.db.collection("assessments").add(assessment_data)
             assessment_id = doc_ref.id
 
-            # Convert to response format
-            questions_response = [QuestionResponse(**q) for q in questions]
+            # Convert to response format (hides answers and explanations)
+            questions_response = [AssessmentQuestionResponse(**q) for q in questions]
 
             # Trigger dashboard update (background)
             try:
@@ -423,7 +423,8 @@ class AssessmentService:
                 created_at = created_at.to_datetime()
 
             questions = data.get("questions", [])
-            questions_response = [QuestionResponse(**q) for q in questions]
+            # Convert to response format (hides answers and explanations)
+            questions_response = [AssessmentQuestionResponse(**q) for q in questions]
 
             return GenerateAssessmentResponse(
                 assessment_id=doc.id,

@@ -42,3 +42,13 @@ class QuestionResponse(BaseModel):
     explanation: str
     difficulty: str
     metadata: Dict[str, Any]
+
+
+class AssessmentQuestionResponse(BaseModel):
+    """Limited question data for assessment taking (hides answers)"""
+
+    id: str
+    question: str
+    options: List[str]
+    difficulty: str
+    metadata: Dict[str, Any]

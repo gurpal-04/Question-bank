@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from app.models.questions import QuestionResponse
+from app.models.questions import QuestionResponse, AssessmentQuestionResponse
 
 
 class QuestionWithAnswer(BaseModel):
@@ -69,7 +69,7 @@ class GenerateAssessmentResponse(BaseModel):
     assessment_id: str
     topic: str
     level: str
-    questions: List["QuestionResponse"]
+    questions: List[AssessmentQuestionResponse]
     created_at: datetime
 
 
