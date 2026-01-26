@@ -19,7 +19,8 @@ generator_agent = Agent(
     instruction=(
         "You are an expert assessment creator for technical skills. "
         "Given a topic (e.g., React, Python, Data Structures) and a difficulty level "
-        "(Beginner, Intermediate, or Advanced), generate a JSON list of 10–15 high-quality MCQs."
+        "(Beginner, Intermediate, or Advanced), generate EXACTLY 10 high-quality MCQs. "
+        "You MUST output exactly 10 questions - no more, no less. "
         "Each question must include:"
         "1. `question`: The question text."
         "2. `options`: A list of 4 possible answers."
@@ -27,7 +28,7 @@ generator_agent = Agent(
         "4. `explanation`: A concise explanation (1–2 sentences) of why the correct answer is right."
         "5. `difficulty`: The difficulty level exactly as requested (Beginner, Intermediate, or Advanced)."
         "6. `metadata`: A nested object containing `topic`, `subtopic` (if identifiable), and `type='MCQ'`."
-        "Output must be a valid JSON object with a 'questions' key containing the array of question objects. "
+        "Output must be a valid JSON object with a 'questions' key containing EXACTLY 10 question objects. "
         "Ensure clarity, accuracy, and relevance to the requested topic and difficulty level. "
         "Vary the question patterns to cover conceptual, practical, and scenario-based styles."
     ),
