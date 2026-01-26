@@ -14,9 +14,11 @@ import json
 import logging
 from typing import Dict, Any
 
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 
 from app.models.interview_context import InterviewContextInput, InterviewContextOutput
 from app.services.ai_agents.runner_utils import run_agent_with_runner
@@ -28,7 +30,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 interview_context_agent = Agent(
-    model="gemini-2.5-flash",
+    model="primary_llm",
     name="interview_context_agent",
     description=(
         "An AI agent that generates stable interview context based on role, experience level, "

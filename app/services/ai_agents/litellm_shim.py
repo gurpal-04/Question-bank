@@ -12,11 +12,23 @@ logger = logging.getLogger(__name__)
 
 # Initialize LiteLLM Router
 # Note: We use model_name aliases to allow agents to pick a "tier"
+# Three-tier system: primary_llm (simple), compound_llm (structured), quality_llm (critical)
 llm_router = Router(
     model_list=[
-        # 🔹 PRIMARY MODEL (cheap & fast)
+        # 🔹 TIER 3 - SIMPLE TASKS (cheap & fast)
+        # Use for: Interview Context, Summary, Topic Normalizer
         {
             "model_name": "primary_llm",
+            "litellm_params": {
+                "model": "groq/qwen/qwen3-32b",
+                "api_key": os.environ.get("GROQ_API_KEY"),  # Adjust provider if needed
+                "timeout": 10,
+                "max_tokens": 800,
+                "temperature": 0.4,
+            },
+        },
+        {
+            "model_name": "primary_llm_fallback",
             "litellm_params": {
                 "model": "groq/llama-3.1-8b-instant",
                 "api_key": os.environ.get("GROQ_API_KEY"),
@@ -25,35 +37,71 @@ llm_router = Router(
                 "temperature": 0.4,
             },
         },
-        # 🔹 HIGH-QUALITY MODEL (use sparingly)
+        
+        # 🔹 TIER 2 - STRUCTURED OUTPUTS (MCQ Generation, Primary Questions)
+        # Use for: MCQ Generator, Primary Question Generator
+        {
+            "model_name": "compound_llm",
+            "litellm_params": {
+                "model": "groq/meta-llama/llama-4-maverick-17b-128e-instruct",
+                "api_key": os.environ.get("GROQ_API_KEY"),
+                "timeout": 15,
+                "max_tokens": 2000,
+                "temperature": 0.3,
+            },
+        },
+        {
+            "model_name": "compound_llm_fallback",
+            "litellm_params": {
+                "model": "groq/groq/compound",
+                "api_key": os.environ.get("GROQ_API_KEY"),  # Adjust provider if needed
+                "timeout": 15,
+                "max_tokens": 2000,
+                "temperature": 0.3,
+            },
+        },
+        
+        # 🔹 TIER 1 - CRITICAL QUALITY (Gap Analysis, Feedback, Follow-ups)
+        # Use for: Gap Analysis, Feedback Agent, Follow-up Generator
         {
             "model_name": "quality_llm",
+            "litellm_params": {
+                "model": "groq/openai/gpt-oss-20b",
+                "api_key": os.environ.get("GROQ_API_KEY"),
+                "timeout": 20,
+                "max_tokens": 2000,
+                "temperature": 0.2,  # Lower for critical tasks
+            },
+        },
+        {
+            "model_name": "quality_llm_fallback",
+            "litellm_params": {
+                "model": "groq/groq/compound",
+                "api_key": os.environ.get("GROQ_API_KEY"),
+                "timeout": 15,
+                "max_tokens": 2000,
+                "temperature": 0.3,
+            },
+        },
+        {
+            "model_name": "quality_llm_fallback2",
             "litellm_params": {
                 "model": "groq/llama-3.3-70b-versatile",
                 "api_key": os.environ.get("GROQ_API_KEY"),
                 "timeout": 15,
-                "max_tokens": 1200,
+                "max_tokens": 2000,
                 "temperature": 0.3,
             },
         },
-        # 🔹 EMERGENCY FALLBACK (optional)
-        {
-            "model_name": "fallback_llm",
-            "litellm_params": {
-                "model": "gemini/gemini-2.5-flash",
-                "api_key": os.environ.get(
-                    "GOOGLE_API_KEY", os.environ.get("GEMINI_API_KEY")
-                ),
-                "timeout": 15,
-                "max_tokens": 800,
-                "temperature": 0.4,
-            },
-        },
     ],
-    # 🔁 fallback logic
+    # 🔁 Fallback logic - tiered degradation
     fallbacks=[
-        {"primary_llm": ["quality_llm", "fallback_llm"]},
-        {"quality_llm": ["primary_llm", "fallback_llm"]},
+        # Tier 3: Simple tasks
+        {"primary_llm": ["primary_llm_fallback"]},
+        # Tier 2: Structured outputs
+        {"compound_llm": ["compound_llm_fallback"]},
+        # Tier 1: Critical quality - gradual degradation
+        {"quality_llm": ["quality_llm_fallback", "quality_llm_fallback2"]},
     ],
 )
 
@@ -185,7 +233,7 @@ class LiteLLMRunner:
 
             final_text = response.choices[0].message.content
             logger.info(
-                f"LiteLLMRunner: Received response (length: {len(final_text)}) from model '{response.model}'"
+                f"LiteLLMRunner: Received response (length: {len(final_text)}) from model '{response.model}' {final_text}"
             )
             logger.debug(f"LiteLLMRunner: Raw LLM Response: {final_text}")
 

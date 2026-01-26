@@ -92,7 +92,7 @@ class UserDashboardService:
             )
 
             # Compute each dashboard section
-            overview = self._compute_overview(user, sessions, analytics_list)
+            overview = self._compute_overview(user, sessions, analytics_list, assessment_results)
             history = self._compute_history(sessions, analytics_list)
             skills = self._compute_skills_mastery(analytics_list, sessions)
             dimensions = self._compute_dimension_trends(analytics_list)
@@ -305,15 +305,23 @@ class UserDashboardService:
         user: User,
         sessions: List[InterviewSession],
         analytics_list: List[InterviewAnalytics],
+        assessment_results: Dict[str, AssessmentResult],
     ) -> UserOverview:
         """Compute hero section overview."""
 
         completed_sessions = [s for s in sessions if s.status == "completed"]
 
-        # Average score
+        # Average score - include both interview scores and assessment scores
         scores = [
             a.overall_score for a in analytics_list if a.overall_score is not None
         ]
+        
+        # Add assessment scores (convert to percentage: score/max_score * 100)
+        for result in assessment_results.values():
+            if result.score is not None and result.max_score and result.max_score > 0:
+                assessment_percentage = (result.score / result.max_score) * 100
+                scores.append(assessment_percentage)
+        
         avg_score = sum(scores) / len(scores) if scores else None
 
         # Improvement trend (last 30 days vs before)

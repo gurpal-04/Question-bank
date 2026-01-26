@@ -1,6 +1,8 @@
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 
 from app.models.normalization import NormalizationResponse
 
@@ -9,7 +11,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 topic_normalizer_agent = Agent(
-    model="gemini-2.0-flash",
+    model="primary_llm",
     name="topic_normalizer_agent",
     description=(
         "An AI agent specialized in normalizing messy topic names into standardized "

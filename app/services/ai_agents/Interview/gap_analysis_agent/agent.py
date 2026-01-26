@@ -1,19 +1,19 @@
 import logging
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 from app.models.gap_analysis import GapAnalysisOutput
 
 logger = logging.getLogger(__name__)
-
 
 # Initialize session service
 session_service = InMemorySessionService()
 
 # Create the agent
 gap_analysis_agent = Agent(
-    model="gemini-2.5-flash",
+    model="quality_llm",
     name="gap_analysis_agent",
     description=(
         "Analyzes a candidate's interview answer and identifies knowledge gaps "

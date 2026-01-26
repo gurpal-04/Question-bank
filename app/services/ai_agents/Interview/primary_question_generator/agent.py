@@ -2,9 +2,11 @@ import json
 import logging
 from typing import Dict, Any
 
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 from app.models.interview_context import PrimaryQuestionInput, PrimaryQuestionOutput
 from app.services.ai_agents.runner_utils import run_agent_with_runner
 
@@ -15,7 +17,7 @@ session_service = InMemorySessionService()
 
 # Create the agent
 primary_question_generator_agent = Agent(
-    model="gemini-2.5-flash",
+    model="compound_llm",
     name="primary_question_generator_agent",
     description=(
         "Generates the PRIMARY interview question based on a selected skill "

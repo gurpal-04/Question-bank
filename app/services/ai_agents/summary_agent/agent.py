@@ -1,13 +1,15 @@
-from google.adk.agents.llm_agent import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
+from app.services.ai_agents.litellm_shim import (
+    LiteLLMAgent as Agent,
+    LiteLLMRunner as Runner,
+    LiteLLMInMemorySessionService as InMemorySessionService,
+)
 
 # Initialize session service
 session_service = InMemorySessionService()
 
 # Create the agent
 summary_agent = Agent(
-    model="gemini-2.5-flash",
+    model="primary_llm",
     name="resource_summary_agent",
     description=(
         "An AI agent specialized in generating concise summaries for learning resources "
