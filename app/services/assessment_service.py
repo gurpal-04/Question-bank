@@ -26,6 +26,7 @@ from app.services.ai_agents.feedback_agent.feedback_agent import (
 )
 from app.services.ai_agents.runner_utils import run_agent_with_runner
 from app.services.user_dashboard_service import UserDashboardService
+# from app.services.ingestion_service import IngestionService
 
 logger = logging.getLogger(__name__)
 
@@ -255,31 +256,31 @@ class AssessmentService:
                         search_queries = weak_topics
 
                     # 2. Search for resources
-                    from app.services.ingestion_service import IngestionService
+                    
 
-                    ingestion_service = IngestionService(self.db)
-                    found_resource_ids = set()
+                    # ingestion_service = IngestionService(self.db)
+                    # found_resource_ids = set()
 
-                    for query in search_queries:
-                        # Fetch top 2 resources per topic
-                        search_results = await ingestion_service.search_resources(
-                            query=query, n_results=2
-                        )
+                    # for query in search_queries:
+                    #     # Fetch top 2 resources per topic
+                    #     search_results = await ingestion_service.search_resources(
+                    #         query=query, n_results=2
+                    #     )
 
-                        for result in search_results:
-                            res_id = result.get("id")
-                            if res_id and res_id not in found_resource_ids:
-                                found_resource_ids.add(res_id)
-                                metadata = result.get("metadata", {})
-                                resources.append(
-                                    {
-                                        "title": metadata.get("title", ""),
-                                        "type": metadata.get("type", "article"),
-                                        "url": metadata.get("url", ""),
-                                        "description": metadata.get("summary", "")
-                                        or f"Learn more about {query}",
-                                    }
-                                )
+                    #     for result in search_results:
+                    #         res_id = result.get("id")
+                    #         if res_id and res_id not in found_resource_ids:
+                    #             found_resource_ids.add(res_id)
+                    #             metadata = result.get("metadata", {})
+                    #             resources.append(
+                    #                 {
+                    #                     "title": metadata.get("title", ""),
+                    #                     "type": metadata.get("type", "article"),
+                    #                     "url": metadata.get("url", ""),
+                    #                     "description": metadata.get("summary", "")
+                    #                     or f"Learn more about {query}",
+                    #                 }
+                    #             )
 
                 except Exception as e:
                     logger.error(f"Error fetching RAG resources: {e}")
