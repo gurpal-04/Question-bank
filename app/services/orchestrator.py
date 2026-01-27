@@ -20,9 +20,10 @@ from app.models.interview import (
     OrchestratorDecision,
 )
 from app.models.gap_analysis import GapAnalysisOutput
-from app.core.config.skillMaps.frontend import FrontendSkill, FRONTEND_SKILL_MAP
+from app.core.config.skillMaps.base import Skill
 from app.utils.skill_selection import select_next_skill_by_importance
 from app.utils.experience_mapper import normalize_experience_for_skill
+from app.utils.skill_map_selector import get_skill_map_for_role
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,10 @@ class InterviewOrchestrator:
                         "label"
                     )
 
-            # Fallback to skill map
+            # Fallback to skill map based on role
             if not current_skill_label:
-                for skill in FRONTEND_SKILL_MAP:
+                skill_map = get_skill_map_for_role(session.role)
+                for skill in skill_map:
                     if skill.id == current_skill_id:
                         current_skill_label = skill.label
                         break
@@ -158,7 +160,8 @@ class InterviewOrchestrator:
         state: InterviewState,
         gap_analysis: Optional[GapAnalysisOutput],
         experience_level: str,
-    ) -> Tuple[OrchestratorDecision, str, Optional[FrontendSkill]]:
+        role: str,
+    ) -> Tuple[OrchestratorDecision, str, Optional[Skill]]:
         """
         Decide the next action based on current state and gap analysis.
 
@@ -168,6 +171,7 @@ class InterviewOrchestrator:
             state: Current computed interview state
             gap_analysis: Gap analysis from the last answer (may be None)
             experience_level: Experience level for skill filtering
+            role: The role to select skills for
 
         Returns:
             Tuple of (decision, reason, next_skill)
@@ -207,8 +211,9 @@ class InterviewOrchestrator:
 
         # Rule 3: Need new primary - check available skills
         skill_level = normalize_experience_for_skill(experience_level)
+        skill_map = get_skill_map_for_role(role)
         next_skill = select_next_skill_by_importance(
-            skills=FRONTEND_SKILL_MAP,
+            skills=skill_map,
             used_skill_ids=state.skills_covered,
             experience_level=skill_level,
         )
@@ -232,14 +237,15 @@ class InterviewOrchestrator:
         )
 
     def get_available_skills(
-        self, used_skill_ids: List[str], experience_level: str
-    ) -> List[FrontendSkill]:
+        self, used_skill_ids: List[str], experience_level: str, role: str
+    ) -> List[Skill]:
         """
         Get list of unused interview-safe skills, sorted by importance (descending).
 
         Args:
             used_skill_ids: List of skill IDs already used
             experience_level: Experience level for filtering
+            role: The role to select skills for
 
         Returns:
             List of available skills sorted by importance
@@ -253,9 +259,10 @@ class InterviewOrchestrator:
             skill_level, {"foundational", "intermediate"}
         )
 
+        skill_map = get_skill_map_for_role(role)
         available = [
             skill
-            for skill in FRONTEND_SKILL_MAP
+            for skill in skill_map
             if skill.interview_safe
             and skill.level in allowed_levels
             and skill.id not in used_skill_ids

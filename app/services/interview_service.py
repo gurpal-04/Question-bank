@@ -25,7 +25,8 @@ from app.utils.experience_mapper import (
     normalize_experience_for_archetype,
     normalize_experience_for_skill,
 )
-from app.core.config.skillMaps.frontend import FRONTEND_SKILL_MAP, FrontendSkill
+from app.core.config.skillMaps.base import Skill
+from app.utils.skill_map_selector import get_skill_map_for_role
 from app.models.gap_analysis import GapAnalysisOutput
 from app.services.ai_agents.Interview.gap_analysis_agent import (
     gap_analysis_runner,
@@ -69,8 +70,9 @@ class InterviewService:
             skill_level = normalize_experience_for_skill(experience_range)
             if seed:
                 random.seed(f"{seed}_skill")
+            skill_map = get_skill_map_for_role(role)
             selected_skill = select_primary_skill(
-                skills=FRONTEND_SKILL_MAP,
+                skills=skill_map,
                 experience_level=skill_level,
             )
             # 3. Archetype selection
@@ -467,8 +469,9 @@ class InterviewService:
 
             # 2. Skill selection - use highest importance for first question
             skill_level = normalize_experience_for_skill(experience_range)
+            skill_map = get_skill_map_for_role(role)
             selected_skill = select_next_skill_by_importance(
-                skills=FRONTEND_SKILL_MAP,
+                skills=skill_map,
                 used_skill_ids=[],  # No skills used yet
                 experience_level=skill_level,
             )
@@ -476,7 +479,7 @@ class InterviewService:
             if not selected_skill:
                 # Fallback to random selection if no skill found
                 selected_skill = select_primary_skill(
-                    skills=FRONTEND_SKILL_MAP,
+                    skills=skill_map,
                     experience_level=skill_level,
                 )
 
@@ -624,6 +627,7 @@ class InterviewService:
                 state=interview_state,
                 gap_analysis=gap_analysis_result,
                 experience_level=session.experience_range,
+                role=session.role,
             )
 
             next_question = None
@@ -785,7 +789,7 @@ class InterviewService:
     async def _generate_new_primary_question(
         self,
         session: InterviewSession,
-        skill: FrontendSkill,
+        skill: Skill,
     ) -> InterviewQuestion:
         """
         Internal helper to generate a new primary question for a different skill.

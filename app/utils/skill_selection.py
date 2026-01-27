@@ -1,6 +1,6 @@
 import random
 from typing import List, Optional
-from app.core.config.skillMaps.frontend import FrontendSkill, FRONTEND_SKILL_MAP
+from app.core.config.skillMaps.base import Skill
 
 
 EXPERIENCE_TO_LEVELS = {
@@ -11,10 +11,10 @@ EXPERIENCE_TO_LEVELS = {
 
 
 def select_primary_skill(
-    skills: List[FrontendSkill],
+    skills: List[Skill],
     experience_level: str,
     past_skill_signals: Optional[dict] = None,  # unused in MVP
-) -> FrontendSkill:
+) -> Skill:
     """
     Selects exactly ONE primary skill for Q1 calibration.
 
@@ -28,7 +28,8 @@ def select_primary_skill(
 
     # STEP 1: Interview-safe only
     eligible = [
-        skill for skill in skills
+        skill
+        for skill in skills
         if skill.interview_safe and skill.level in allowed_levels
     ]
 
@@ -48,10 +49,10 @@ def select_primary_skill(
 
 
 def select_next_skill_by_importance(
-    skills: List[FrontendSkill],
+    skills: List[Skill],
     used_skill_ids: List[str],
     experience_level: str,
-) -> Optional[FrontendSkill]:
+) -> Optional[Skill]:
     """
     Select the highest-importance unused skill for a new primary question.
 
@@ -65,13 +66,16 @@ def select_next_skill_by_importance(
     """
     if experience_level not in EXPERIENCE_TO_LEVELS:
         # Fallback to intermediate if invalid level
-        allowed_levels = EXPERIENCE_TO_LEVELS.get("intermediate", {"foundational", "intermediate"})
+        allowed_levels = EXPERIENCE_TO_LEVELS.get(
+            "intermediate", {"foundational", "intermediate"}
+        )
     else:
         allowed_levels = EXPERIENCE_TO_LEVELS[experience_level]
 
     # Filter eligible skills
     eligible = [
-        skill for skill in skills
+        skill
+        for skill in skills
         if skill.interview_safe
         and skill.level in allowed_levels
         and skill.id not in used_skill_ids
