@@ -53,7 +53,10 @@ class UserDashboardService:
         self.db = db
 
     async def compute_dashboard(
-        self, user_id: str, limit: Optional[int] = 20  # Default limit for performance
+        self, 
+        user_id: str, 
+        limit: Optional[int] = 20,  # Default limit for performance
+        user: Optional[User] = None  # Optional User object (for guest users)
     ) -> UserDashboard:
         """
         Compute complete dashboard for a user.
@@ -61,6 +64,7 @@ class UserDashboardService:
         Args:
             user_id: User ID to compute dashboard for
             limit: Optional limit on number of interviews to analyze (for performance)
+            user: Optional User object (if already available, skips Firestore lookup)
 
         Returns:
             Complete UserDashboard object
@@ -68,17 +72,26 @@ class UserDashboardService:
         try:
             logger.info(f"Computing dashboard for user {user_id}")
 
-            # Fetch user, sessions, and assessments in parallel
-            user_task = self._get_user(user_id)
-            sessions_task = self._get_user_sessions(user_id, limit)
-            assessments_task = self._get_user_assessments(user_id, limit)
+            # If user object not provided, fetch from Firestore
+            if user is None:
+                user_task = self._get_user(user_id)
+                sessions_task = self._get_user_sessions(user_id, limit)
+                assessments_task = self._get_user_assessments(user_id, limit)
 
-            user, sessions, assessments = await asyncio.gather(
-                user_task, sessions_task, assessments_task
-            )
+                user, sessions, assessments = await asyncio.gather(
+                    user_task, sessions_task, assessments_task
+                )
 
-            if not user:
-                raise ValueError(f"User {user_id} not found")
+                if not user:
+                    raise ValueError(f"User {user_id} not found")
+            else:
+                # User object provided, just fetch sessions and assessments
+                sessions_task = self._get_user_sessions(user_id, limit)
+                assessments_task = self._get_user_assessments(user_id, limit)
+
+                sessions, assessments = await asyncio.gather(
+                    sessions_task, assessments_task
+                )
 
             # Batch fetch analytics and assessment results
             # Note: These could also be gathered in parallel

@@ -12,6 +12,7 @@ from google.cloud import firestore
 
 from app.models.user_dashboard import UserDashboard
 from app.models.stored_dashboard import StoredDashboard
+from app.models.user import User
 from app.services.user_dashboard_service import UserDashboardService
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,8 @@ class StoredDashboardService:
     async def get_dashboard(
         self,
         user_id: str,
-        force_refresh: bool = False
+        force_refresh: bool = False,
+        user: Optional[User] = None
     ) -> UserDashboard:
         """
         Get dashboard for user.
@@ -38,6 +40,7 @@ class StoredDashboardService:
         Args:
             user_id: User ID
             force_refresh: If True, always compute fresh dashboard
+            user: Optional User object (avoids Firestore lookup for guest users)
         
         Returns:
             UserDashboard object
@@ -46,7 +49,7 @@ class StoredDashboardService:
             # If force refresh, compute fresh
             if force_refresh:
                 logger.info(f"Force refresh requested for user {user_id}")
-                return await self._compute_and_store(user_id)
+                return await self._compute_and_store(user_id, user=user)
             
             # Try to get cached dashboard
             cached = await self._get_cached_dashboard(user_id)
@@ -57,13 +60,13 @@ class StoredDashboardService:
             
             # No cache, compute fresh
             logger.info(f"No cached dashboard found for user {user_id}, computing fresh")
-            return await self._compute_and_store(user_id)
+            return await self._compute_and_store(user_id, user=user)
             
         except Exception as e:
             logger.error(f"Error getting dashboard for user {user_id}: {e}", exc_info=True)
             # Fallback to on-demand computation
             logger.info("Falling back to on-demand computation")
-            return await self.compute_service.compute_dashboard(user_id, limit=20)
+            return await self.compute_service.compute_dashboard(user_id, limit=20, user=user)
     
     async def _get_cached_dashboard(self, user_id: str) -> Optional[StoredDashboard]:
         """Get cached dashboard from Firestore."""
@@ -82,13 +85,13 @@ class StoredDashboardService:
             logger.error(f"Error fetching cached dashboard for user {user_id}: {e}")
             return None
     
-    async def _compute_and_store(self, user_id: str) -> UserDashboard:
+    async def _compute_and_store(self, user_id: str, user: Optional[User] = None) -> UserDashboard:
         """Compute fresh dashboard and store it."""
         try:
             logger.info(f"Computing fresh dashboard for user {user_id}")
             
             # Compute dashboard
-            dashboard = await self.compute_service.compute_dashboard(user_id, limit=50)
+            dashboard = await self.compute_service.compute_dashboard(user_id, limit=50, user=user)
             
             # Convert to StoredDashboard
             stored = StoredDashboard(

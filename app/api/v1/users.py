@@ -57,7 +57,8 @@ async def get_user_dashboard(
         service = StoredDashboardService(db)
         dashboard = await service.get_dashboard(
             user_id=current_user.id,
-            force_refresh=force_refresh
+            force_refresh=force_refresh,
+            user=current_user  # Pass user object to avoid re-fetching
         )
         
         logger.info(f"Dashboard fetched successfully for user {current_user.id}")
@@ -110,7 +111,8 @@ async def refresh_dashboard(
         service = StoredDashboardService(db)
         dashboard = await service.get_dashboard(
             user_id=current_user.id,
-            force_refresh=True
+            force_refresh=True,
+            user=current_user  # Pass user object to avoid re-fetching
         )
         
         logger.info(f"Dashboard refreshed successfully for user {current_user.id}")
@@ -157,9 +159,12 @@ async def get_specific_user_dashboard(
         logger.info(f"Fetching dashboard for user {user_id} (requested by {current_user.id})")
         
         service = StoredDashboardService(db)
+        # Pass user object only if requesting own dashboard
+        user_obj = current_user if user_id == current_user.id else None
         dashboard = await service.get_dashboard(
             user_id=user_id,
-            force_refresh=force_refresh
+            force_refresh=force_refresh,
+            user=user_obj
         )
         
         logger.info(f"Dashboard fetched successfully for user {user_id}")
