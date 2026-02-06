@@ -80,6 +80,7 @@ from app.api.v1 import (
     interview,
     analytics,
     users,
+    feature_requests,
 )
 
 # Create FastAPI app
@@ -130,7 +131,7 @@ app.include_router(
 app.include_router(interview.router, prefix="/v1/interview", tags=["interview"])
 app.include_router(analytics.router, prefix="/v1/analytics", tags=["analytics"])
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
-
+app.include_router(feature_requests.router, prefix="/v1/feature-requests", tags=["feature-requests"])
 
 @app.get("/")
 async def root():
@@ -152,6 +153,9 @@ async def root():
             "get_result": "GET /v1/results/{id}",
             "generate_interview_context": "POST /v1/interview-context/generate",
             "generate_primary_question": "POST /v1/interview/generate-primary-question",
+            "create_feature_request": "POST /v1/feature-requests",
+            "list_feature_requests": "GET /v1/feature-requests",
+            "vote_feature_request": "POST /v1/feature-requests/{id}/vote",
             "health": "GET /health",
         },
     }
