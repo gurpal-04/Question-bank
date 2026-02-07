@@ -35,6 +35,8 @@ class FeatureRequestResponse(BaseModel):
     upvotes: int = 0
     downvotes: int = 0
     score: int = 0
+    comments_count: int = 0
+    user_vote: Optional[VoteType] = None
     created_at: datetime
     updated_at: datetime
 
@@ -43,4 +45,28 @@ class FeatureRequestListResponse(BaseModel):
     """Response model for feature request list"""
 
     feature_requests: List[FeatureRequestResponse]
+    total: int
+
+
+class CreateFeatureRequestCommentRequest(BaseModel):
+    """Request model for creating a comment on a feature request"""
+
+    text: str = Field(..., min_length=1, max_length=2000, description="Comment text")
+
+
+class FeatureRequestCommentResponse(BaseModel):
+    """Response model for a feature request comment"""
+
+    id: str
+    feature_request_id: str
+    text: str
+    created_by: str
+    created_by_email: Optional[str] = None
+    created_at: datetime
+
+
+class FeatureRequestCommentListResponse(BaseModel):
+    """Response model for list of comments"""
+
+    comments: List[FeatureRequestCommentResponse]
     total: int

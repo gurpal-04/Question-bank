@@ -153,9 +153,6 @@ async def root():
             "get_result": "GET /v1/results/{id}",
             "generate_interview_context": "POST /v1/interview-context/generate",
             "generate_primary_question": "POST /v1/interview/generate-primary-question",
-            "create_feature_request": "POST /v1/feature-requests",
-            "list_feature_requests": "GET /v1/feature-requests",
-            "vote_feature_request": "POST /v1/feature-requests/{id}/vote",
             "health": "GET /health",
         },
     }
