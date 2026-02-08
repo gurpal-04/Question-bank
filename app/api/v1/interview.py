@@ -1,9 +1,10 @@
 import asyncio
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
 from google.cloud import firestore
 from typing import Optional
 from app.core.database import get_db
-from app.core.security import get_optional_user, User
+from app.core.security import get_optional_user, get_current_user, User
+from app.models.stt import TranscribeResponse
 from app.models.interview import (
     GeneratePrimaryQuestionRequest,
     GeneratePrimaryQuestionResponse,
@@ -22,6 +23,7 @@ from app.models.interview import (
 )
 from app.models.gap_analysis import GapAnalysisOutput
 from app.services.interview_service import InterviewService
+from app.services.stt_service import SttService
 
 router = APIRouter()
 
@@ -29,6 +31,35 @@ router = APIRouter()
 # =============================================================================
 # NEW ORCHESTRATOR API ENDPOINTS
 # =============================================================================
+
+
+@router.post(
+    "/transcribe",
+    response_model=TranscribeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Transcribe audio answer",
+    description="Transcribe an audio file to text using Whisper via Groq (LiteLLM).",
+)
+async def transcribe_audio(
+    audio: UploadFile = File(..., description="Audio file (wav/mp3/webm/ogg)"),
+    current_user: User = Depends(get_current_user),
+):
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
+
+    service = SttService()
+    try:
+        return await service.transcribe(
+            file=audio,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error transcribing audio: {e}",
+        )
 
 
 @router.post(
