@@ -441,7 +441,7 @@ class AnalyticsService:
                         QuestionPerformance(
                             question_id=q.question_id,
                             question_text=(
-                                q.question[:100] + "..."
+                                q.question
                                 if len(q.question) > 100
                                 else q.question
                             ),
@@ -678,11 +678,13 @@ class AnalyticsService:
         Rule-based recommendation engine.
         """
         recommendations = []
+        count = 0
 
         # Priority 1: Weakest skill
         if weakest_skill and weakest_skill.avg_score < 3.5:
+            count += 1
             recommendations.append(
-                f"🎯 Priority 1: Master {weakest_skill.skill_label} "
+                f"🎯 Priority {count}: Master {weakest_skill.skill_label} "
                 f"(your weakest skill with score {weakest_skill.avg_score}/5.0). "
                 f"Practice 2-3 more sessions focusing on this skill."
             )
@@ -690,8 +692,9 @@ class AnalyticsService:
         # Priority 2: Missing concepts
         if len(concept_mastery.missing) > 0:
             top_missing = concept_mastery.missing[:5]
+            count += 1
             recommendations.append(
-                f"📚 Priority 2: Study these concepts: {', '.join(top_missing)}. "
+                f"📚 Priority {count}: Study these concepts: {', '.join(top_missing)}. "
                 f"These were expected but not mentioned in your answers."
             )
 
@@ -703,28 +706,21 @@ class AnalyticsService:
             ("clarity", dimension_scores.clarity),
         ]
         lowest_dim = min(dimensions, key=lambda x: x[1].score)
-
+        count += 1
         if lowest_dim[1].status == "Below Bar":
             dim_name = lowest_dim[0].capitalize()
             recommendations.append(
-                f"💪 Priority 3: Improve {dim_name} "
+                f"💪 Priority {count}: Improve {dim_name} "
                 f"(score: {lowest_dim[1].score}/{lowest_dim[1].target} target). "
                 f"{lowest_dim[1].feedback_snippet}"
-            )
-
-        # Priority 4: Follow-up ratio
-        if followup_analysis.followup_ratio > followup_analysis.benchmark_ratio + 0.2:
-            recommendations.append(
-                f"🔄 Priority 4: Reduce follow-up triggers. "
-                f"You triggered {followup_analysis.total_followups} follow-ups. "
-                f"Strong candidates typically trigger fewer follow-ups by providing complete first answers."
             )
 
         # Priority 5: Incorrect concepts
         if len(concept_mastery.incorrect) > 0:
             incorrect_list = [c.concept for c in concept_mastery.incorrect]
+            count += 1
             recommendations.append(
-                f"⚠️ Priority 5: Correct misconceptions about: {', '.join(incorrect_list)}. "
+                f"⚠️ Priority {count}: Correct misconceptions about: {', '.join(incorrect_list)}. "
                 f"These concepts were explained incorrectly."
             )
 

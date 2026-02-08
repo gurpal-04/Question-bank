@@ -39,7 +39,7 @@ class InterviewOrchestrator:
     - Gap analysis signals
     """
 
-    MAX_TOTAL_QUESTIONS = 4
+    MAX_TOTAL_QUESTIONS = 8
     MAX_FOLLOWUPS_PER_SKILL = 2
 
     def compute_state(self, session: InterviewSession) -> InterviewState:
