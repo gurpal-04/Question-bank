@@ -81,6 +81,7 @@ from app.api.v1 import (
     analytics,
     users,
     feature_requests,
+    resumes,
 )
 
 # Create FastAPI app
@@ -98,7 +99,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:4173",
         "https://interview-hub1.netlify.app",
-        "https://id-preview--d72cdb61-6a23-4e77-87a8-02153d82ab6a.lovable.app"
+        "https://id-preview--d72cdb61-6a23-4e77-87a8-02153d82ab6a.lovable.app",
     ],  # Add your frontend URLs
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods
@@ -131,7 +132,11 @@ app.include_router(
 app.include_router(interview.router, prefix="/v1/interview", tags=["interview"])
 app.include_router(analytics.router, prefix="/v1/analytics", tags=["analytics"])
 app.include_router(users.router, prefix="/v1/users", tags=["users"])
-app.include_router(feature_requests.router, prefix="/v1/feature-requests", tags=["feature-requests"])
+app.include_router(
+    feature_requests.router, prefix="/v1/feature-requests", tags=["feature-requests"]
+)
+app.include_router(resumes.router, prefix="/v1/resumes", tags=["resumes"])
+
 
 @app.get("/")
 async def root():
