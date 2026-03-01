@@ -113,7 +113,7 @@ class InterviewService:
                 question_type="primary",
                 question=primary_question_data["question"],
                 archetype=primary_question_data["archetype"],
-                # skill_id is removed from InterviewQuestion model as per user request
+                evaluation_contract=primary_question_data.get("evaluation_contract"),
             )
 
             # --- Persist session to Firestore ---
@@ -149,7 +149,11 @@ class InterviewService:
             raise
 
     async def perform_gap_analysis(
-        self, question: str, answer: str, expected_concepts: List[str]
+        self,
+        question: str,
+        answer: str,
+        expected_concepts: List[str],
+        evaluation_contract: Optional[Dict[str, Any]] = None,
     ) -> GapAnalysisOutput:
         """
         Analyze candidate answer for knowledge gaps using the AI agent.
@@ -159,6 +163,7 @@ class InterviewService:
                 "question": question,
                 "answer": answer,
                 "expected_concepts": expected_concepts,
+                "evaluation_contract": evaluation_contract,
             }
             prompt = json.dumps(prompt_data, indent=2)
 
@@ -297,6 +302,7 @@ class InterviewService:
                 question=target_question.question,
                 answer=answer,
                 expected_concepts=expected_concepts,
+                evaluation_contract=target_question.evaluation_contract,
             )
 
             # 4. Update Session
@@ -520,6 +526,7 @@ class InterviewService:
                 skill_id=selected_skill.id,
                 question=primary_question_data["question"],
                 archetype=primary_question_data["archetype"],
+                evaluation_contract=primary_question_data.get("evaluation_contract"),
             )
 
             # 7. Update session in Firestore with first question and status
@@ -601,6 +608,7 @@ class InterviewService:
                 question=unanswered_question.question,
                 answer=answer_text,
                 expected_concepts=expected_concepts,
+                evaluation_contract=unanswered_question.evaluation_contract,
             )
 
             # 4. Update question with answer and gap analysis
@@ -784,6 +792,7 @@ class InterviewService:
             intent=followup_data.get("intent"),
             question=followup_data.get("question"),
             archetype=None,
+            evaluation_contract=followup_data.get("evaluation_contract"),
         )
 
     async def _generate_new_primary_question(
@@ -818,4 +827,5 @@ class InterviewService:
             skill_id=skill.id,
             question=primary_question_data["question"],
             archetype=primary_question_data["archetype"],
+            evaluation_contract=primary_question_data.get("evaluation_contract"),
         )

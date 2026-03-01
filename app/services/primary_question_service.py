@@ -32,6 +32,7 @@ async def generate_primary_question(
             - question: string
             - archetype: string
             - skill_id: string
+            - evaluation_contract: Dict containing expected_concepts, depth_expectation, etc.
     Raises:
         ValidationError: If input validation fails
         ValueError: If agent execution fails or output is invalid

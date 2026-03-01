@@ -120,6 +120,31 @@ class PrimaryQuestionInput(BaseModel):
     )
 
 
+class EvaluationContract(BaseModel):
+    """
+    Question-specific evaluation criteria generated along with the question.
+    This ensures that the gap analysis is only performed against concepts
+    relevant to the actual question asked.
+    """
+
+    expected_concepts: List[str] = Field(
+        ...,
+        description="3-5 specific technical concepts or keywords that must be present in a strong answer.",
+    )
+    depth_expectation: str = Field(
+        ...,
+        description="Explicit description of the required technical depth (e.g., 'Must explain internal reconciliation algorithm, not just mention it').",
+    )
+    priority_concepts: List[str] = Field(
+        default_factory=list,
+        description="Critical concepts that, if missing, should heavily penalize the score.",
+    )
+    role_weight_multiplier: float = Field(
+        default=1.0,
+        description="Weight multiplier for this question's impact on the overall role evaluation.",
+    )
+
+
 class PrimaryQuestionOutput(BaseModel):
     """
     Output schema for PrimaryQuestionGeneratorAgent.
@@ -140,6 +165,10 @@ class PrimaryQuestionOutput(BaseModel):
         ...,
         description="The skill ID that this question targets",
         min_length=1,
+    )
+    evaluation_contract: EvaluationContract = Field(
+        ...,
+        description="Question-specific evaluation criteria",
     )
 
 
@@ -166,3 +195,7 @@ class FollowUpQuestionOutput(BaseModel):
     question: str = Field(..., description="The generated follow-up question")
     intent: str = Field(..., description="The intent used for this question")
     skill_id: str = Field(..., description="The skill ID targeted")
+    evaluation_contract: EvaluationContract = Field(
+        ...,
+        description="Question-specific evaluation criteria",
+    )

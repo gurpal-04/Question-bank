@@ -60,7 +60,13 @@ primary_question_generator_agent = Agent(
         "{"
         '  "question": "...",'
         '  "archetype": "...",'
-        '  "skill_id": "..."'
+        '  "skill_id": "...",'
+        '  "evaluation_contract": {'
+        '    "expected_concepts": ["concept1", "concept2", ...],'
+        '    "depth_expectation": "Detailed explanation of...",'
+        '    "priority_concepts": ["critical_concept1", ...],'
+        '    "role_weight_multiplier": 1.0'
+        "  }"
         "}"
     ),
     output_schema=PrimaryQuestionOutput,

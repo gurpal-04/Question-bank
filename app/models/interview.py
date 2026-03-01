@@ -111,6 +111,9 @@ class InterviewQuestion(BaseModel):
     archetype: Optional[str] = None
     intent: Optional[str] = None
     question: str
+    evaluation_contract: Optional[Dict[str, Any]] = Field(
+        None, description="Question-specific evaluation criteria"
+    )
     answer: Optional[str] = None
     answered_at: Optional[datetime] = None
     gap_analysis: Optional[Dict[str, Any]] = None
@@ -127,7 +130,10 @@ class InterviewSession(BaseModel):
     calibration: Optional[CalibrationData] = None
     questions: List[InterviewQuestion] = []
     interview_summary: Optional[Dict[str, Any]] = None
-    status: str = Field(default="pending", description="Interview status: pending, in_progress, or completed")
+    status: str = Field(
+        default="pending",
+        description="Interview status: pending, in_progress, or completed",
+    )
     created_at: datetime
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -138,11 +144,14 @@ class InterviewSessionListResponse(BaseModel):
 
 class InterviewListItem(BaseModel):
     """Simplified interview session model for list endpoints"""
+
     id: str = Field(description="Interview session ID")
     role: str = Field(description="Job role")
     experience: str = Field(description="Experience range", alias="experience_range")
     difficulty: str = Field(description="Difficulty level")
-    status: str = Field(description="Interview status: completed, in_progress, or pending")
+    status: str = Field(
+        description="Interview status: completed, in_progress, or pending"
+    )
     created: datetime = Field(description="Creation timestamp", alias="created_at")
 
     class Config:
@@ -151,6 +160,7 @@ class InterviewListItem(BaseModel):
 
 class InterviewListResponse(BaseModel):
     """Response model for GET /interview endpoint"""
+
     sessions: List[InterviewListItem]
 
 

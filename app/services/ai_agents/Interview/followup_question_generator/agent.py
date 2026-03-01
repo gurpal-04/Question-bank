@@ -51,6 +51,18 @@ followup_question_generator_agent = Agent(
         "- candidate_answer\n"
         "- evaluation_signals\n"
         "- followup_intent (MUST be respected)\n\n"
+        "OUTPUT FORMAT (JSON ONLY):\n"
+        "{\n"
+        '  "question": "...",\n'
+        '  "intent": "...",\n'
+        '  "skill_id": "...",\n'
+        '  "evaluation_contract": {\n'
+        '    "expected_concepts": ["concept1", "concept2", ...],\n'
+        '    "depth_expectation": "Detailed explanation of...",\n'
+        '    "priority_concepts": ["critical_concept1", ...],\n'
+        '    "role_weight_multiplier": 1.0\n'
+        "  }\n"
+        "}\n"
     ),
     output_schema=FollowUpQuestionOutput,
     output_key="followup_question",
